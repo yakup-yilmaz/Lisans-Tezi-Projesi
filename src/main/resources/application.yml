@@ -1,0 +1,28 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: tezprojesi-project
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+simulation:
+  maxTicks: 10080
+  orderRate: 0.08
+  minOrderVolume: 1.0
+  maxOrderVolume: 5.0
+  minTrafficFactor: 0.9
+  maxTrafficFactor: 1.3
+  autostart: false
+  tickDurationMinutes: 1
+  liveTickDelayMs: 1000
+  minMainDepartureLoadFraction: 0.5
+  maxMainWaitHours: 3.0
+  dispatchApprovalRequired: true
+  # Mikro depo: mevcut stok baseline x bu oranın altına düşünce talep
+  reorderPointFraction: 0.50
