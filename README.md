@@ -45,6 +45,7 @@ Geleneksel lojistik planlama yazılımları statik ve deterministik olmayan vars
 * **🔀 %35 Sabit Rota Sapması & TSP Çoklu Durak Konsolidasyonu:** Yolda giderken ek mikro depolara uğrayıp yük toplamayı sağlayan Gezgin Satıcı permütasyon optimizasyonu, değerli kargolara tanınan finansal sapma bonusu (`totalValue / 100.0`) ve tezin onaylı sabit %35 sapma kuralı.
 * **🛑 Kademeli SLA Eşikleri & Finansal Zarar Uyarılı Force Dispatch:** 5 saatlik (300 tick) doğal konsolidasyon toleransı sonrasında karesel tırmanan aging skoruyla mesai bitimi (Aging $\ge 600 - 800$) operatör onay mekanizması; %5 dolulukta aracın kilitlenmesini finansal zarar ikazıyla çözen kurtarma sübabı.
 * **🎨 Segment-Based LERP Animasyonu:** Üçüncü parti harita kütüphanelerine (Leaflet/Mapbox) bağımlılık olmadan, saf HTML5/SVG Canvas üzerinde araçların koordinatlarını lineer interpolasyon (LERP) ile 60 FPS pürüzsüz akıtan reaktif arayüz.
+* **🎮 Hibrit Talep Yönetimi (Otonom Sipariş vs. Hızlı Operatör Girişi):** Normal akışta `OrderGenerator` arka planda müşterilerden rastgele stok talebi üretirken; algoritmaları ve senaryoları hızla test edebilmek için operatörün istediği depoyu (`M1` - `M5`), ürünü (`P1` - `P10`) ve adedi seçerek anında manuel tüketim veya özel ikmal siparişi tetikleyebilmesini sağlayan kontrol paneli.
 * **🌱 Sürdürülebilirlik & CO2 Emisyon Analitiği:** Elektrikli araçların ($0.0\text{ kg CO}_2/\text{km}$), benzinli ($0.7\text{ kg CO}_2/\text{km}$) ve dizel araçların ($0.8\text{ kg CO}_2/\text{km}$) emisyonlarını takip edip dizel baz çizgisine göre net kurtarılan CO2 miktarını hesaplayan çevresel raporlama.
 
 ---
@@ -330,8 +331,8 @@ Kullanıcı arayüzü, 4 uzmanlaşmış reaktif ekrandan oluşmaktadır:
    * **İnteraktif Araç ve Düğüm Tooltip'leri:** Araç üzerine gelindiğinde kalan mesafe, anlık yük, varış süresi ve kargo detayları.
 
 3. **Operasyonlar (`OperationsScreen` & `ManuelControlPanel`):**
-   * Mikro Depo Stok ve Dinamik Baseline Takibi: Ürün bazlı mevcut stok, yoldaki stok ve hedef eşik çubukları.
-   * Anlık Stok Tüketim Test Paneli: Operatörün depodan manuel ürün tüketerek $(s, S)$ ikmal algoritmasını sahada sınayabilmesi.
+   * **Mikro Depo Stok ve Dinamik Baseline Takibi:** Ürün bazlı mevcut stok, yoldaki stok ve hedef eşik çubukları.
+   * **Hızlandırılmış Manuel Test ve Senaryo Yönetimi (`ManuelControlPanel`):** Normal akışta `OrderGenerator` arka planda müşterilerden rastgele sipariş üretir. Ancak karar destek sistemini, $(s, S)$ ikmal kurallarını ve Best-Fit filo atamasını anında test edip süreci hızlandırmak için operatör; istediği mikro depoyu (`M1` - `M5`), ürün tipini (`P1` - `P10`) ve adedini seçerek tek tıkla doğrudan **Manuel Stok Tüketimi** veya **Özel İkmal Siparişi** oluşturabilir. Bu manuel talepler `isManual = true` olarak işaretlenir ve otonom konsolidasyon beklemesini bypass ederek hızla araca atanır.
    * **Human-in-the-Loop Onay Paneli:** 5 saatlik tolerans sonrası mesai sonunda ortaya çıkan operatör onay butonları.
    * **Finansal Zarar Uyarısı (Deadlock Sübabı):** %5 gibi kritik düşük yüklerde zararına sevki operatörün onayına sunan güvenli tahliye mekanizması.
 
@@ -455,7 +456,7 @@ npm run dev
 1. Tarayıcınızdan `http://localhost:5173` adresine bağlanın.
 2. Sağ üstteki **"Başlat"** veya **"Adım İlerlet (+10 Tick)"** butonlarına tıklayarak simülasyon motorunu çalıştırın.
 3. **Canlı Harita** ekranında araçların düğümler arasındaki LERP hareketlerini, canlı trafik yoğunluğunu ve köprü/gişe geçişlerini gözlemleyin.
-4. **Operasyonlar** ekranından mikro depolarda stok tüketimi tetikleyerek dinamik $(s, S)$ ikmal zincirini ve konsolidasyon planlarını test edin.
+4. **Operasyonlar (Hızlı Senaryo Testi):** Müşterilerden rastgele sipariş gelmesini beklemek istemiyorsanız, **Manuel Kontrol Paneli** üzerinden hedef mikro depoyu (`M1`-`M5`), ürünü (`P1`-`P10`) ve miktarı seçerek stoğu anında tüketebilir (ikmali tetiklemek için) veya doğrudan **özel ikmal siparişi** oluşturup araç atamasını anında tetikleyebilirsiniz.
 5. Düşük doluluklu araçlarda 5 saatlik grace period sonrasında beliren **Human-in-the-Loop** onay butonunu deneyimleyin.
 6. **Canlı İzleme & Filo** ekranından 7 aracın sefer geçmişini, kat ettiği mesafeyi, yakıt/gişe harcamalarını ve net CO2 tasarrufunu inceleyin.
 
