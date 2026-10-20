@@ -12,7 +12,7 @@ function clamp(value, min, max) {
 }
 
 // Linear 2D Projection
-function project(x, y, k = 1) {
+function project(x, y) {
   const offset = { x: 50, y: 50 }
   const scale = 0.95
   return {
@@ -89,32 +89,6 @@ function getMultiNodePath(nodes) {
     }
   }
   return segments.join(' ')
-}
-
-// Sabit yol genişliği — tüm yollar aynı standart kalınlıkta
-function getRoadWidth(edge) {
-  return 6
-}
-
-function getRoadSurface(edge) {
-  if (edge.active) return '#0c1622'
-  if (edge.trafficLocked) return '#1a0d10'
-  if (edge.tollCost > 0) return '#1a180d'
-  return '#080c14'
-}
-
-function getRoadLaneColor(edge) {
-  if (edge.active) return '#38bdf8' // Blue/Turquoise
-  if (edge.trafficLocked) return '#fb7185'
-  if (edge.tollCost > 0) return '#facc15'
-  return 'rgba(56,189,248,0.2)'
-}
-
-function getRoadGlowColor(edge) {
-  if (edge.active) return 'rgba(14,165,233,0.45)'
-  if (edge.trafficLocked) return 'rgba(244,63,94,0.2)'
-  if (edge.tollCost > 0) return 'rgba(250,204,21,0.2)'
-  return 'rgba(56,189,248,0.08)'
 }
 
 function shouldShowNodeLabel(node, highlighted) {
@@ -195,9 +169,14 @@ export function MapCanvas({
 
   // Optimized City Lights Path
   const cityLightsPath = useMemo(() => {
-    return Array.from({ length: 80 }).map(() => {
-      const x = Math.random() * 1100
-      const y = Math.random() * 1000
+    // Deterministic pseudo-random so render stays pure and lights do not move on re-render.
+    const rand = (n) => {
+      const s = Math.sin(n * 12.9898) * 43758.5453
+      return s - Math.floor(s)
+    }
+    return Array.from({ length: 80 }).map((_, i) => {
+      const x = rand(i * 2 + 1) * 1100
+      const y = rand(i * 2 + 2) * 1000
       return `M ${x} ${y} m -1, 0 a 1,1 0 1,0 2,0 a 1,1 0 1,0 -2,0`
     }).join(' ')
   }, [])
@@ -221,13 +200,13 @@ export function MapCanvas({
 
   const handlePointerUp = (e) => {
     isDragging.current = false
-    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {}
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* pointer capture may already be released */ }
   }
 
-  const safeNodes = Array.isArray(nodes) ? nodes : []
-  const safeEdges = Array.isArray(edges) ? edges : []
-  const safeVehicles = Array.isArray(vehicles) ? vehicles : []
-  const safeAssignments = Array.isArray(vehicleAssignments) ? vehicleAssignments : []
+  const safeNodes = useMemo(() => (Array.isArray(nodes) ? nodes : []), [nodes])
+  const safeEdges = useMemo(() => (Array.isArray(edges) ? edges : []), [edges])
+  const safeVehicles = useMemo(() => (Array.isArray(vehicles) ? vehicles : []), [vehicles])
+  const safeAssignments = useMemo(() => (Array.isArray(vehicleAssignments) ? vehicleAssignments : []), [vehicleAssignments])
 
   const BACKEND_INTERVAL_MS = Math.max(simulationMsPerTick, MOTION_INTERVAL_MS)
   const INTERPOLATION_STEPS = Math.max(1, Math.round(BACKEND_INTERVAL_MS / MOTION_INTERVAL_MS))
@@ -391,15 +370,10 @@ export function MapCanvas({
   }, [INTERPOLATION_STEPS])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restart interpolation phase when a new backend snapshot arrives
     setMotionTick(0)
   }, [lastStatusSyncAt, status?.currentTick])
 
-  const elapsedSinceLastSyncMs = status?.running
-    ? Math.max(0, Date.now() - Number(lastStatusSyncAt || 0))
-    : 0
-  const elapsedBackendTicks = status?.running
-    ? Math.floor(elapsedSinceLastSyncMs / BACKEND_INTERVAL_MS)
-    : 0
   const smoothTickFraction = status?.running ? motionTick / INTERPOLATION_STEPS : 0
 
   // Grid Generation Labels (A1-Z9)
@@ -666,9 +640,6 @@ export function MapCanvas({
               const isMoving = vehicle.status === 'EN_ROUTE' || vehicle.status === 'RETURNING'
               const isAtBase = vehicle.status === 'IDLE'
               const statusColor = isProcessing ? "#ffea00" : isMoving ? "#39ff14" : isAtBase ? "#00d1ff" : "#00d1ff"
-
-              const loadPct = Math.round((vehicle.loadFraction || 0) * 100)
-              const cargoVal = assignment?.totalValue || 0
 
               const vehicleIndex = safeVehicles.findIndex(v => v.id === vehicle.id)
 

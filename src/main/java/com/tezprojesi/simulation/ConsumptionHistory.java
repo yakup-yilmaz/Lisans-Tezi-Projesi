@@ -17,9 +17,9 @@ final class ConsumptionHistory {
   }
 
   /**
-   * Record consumption for a single tick.
+   * Record consumption for a single tick (Thread-Safe).
    */
-  void recordConsumption(int quantity) {
+  synchronized void recordConsumption(int quantity) {
     if (quantity < 0) {
       throw new IllegalArgumentException("Consumption cannot be negative");
     }
@@ -34,9 +34,9 @@ final class ConsumptionHistory {
   }
 
   /**
-   * Get the average consumption per tick over the window.
+   * Get the average consumption per tick over the window (Thread-Safe).
    */
-  double getMovingAverage() {
+  synchronized double getMovingAverage() {
     if (tickConsumptions.isEmpty()) {
       return 0.0;
     }
@@ -44,23 +44,23 @@ final class ConsumptionHistory {
   }
 
   /**
-   * Get the total consumption in the current window.
+   * Get the total consumption in the current window (Thread-Safe).
    */
-  int getTotalConsumption() {
+  synchronized int getTotalConsumption() {
     return totalConsumption;
   }
 
   /**
-   * Get the number of ticks recorded in the window.
+   * Get the number of ticks recorded in the window (Thread-Safe).
    */
-  int getWindowFillCount() {
+  synchronized int getWindowFillCount() {
     return tickConsumptions.size();
   }
 
   /**
-   * Clear history (e.g., on reset).
+   * Clear history on reset (Thread-Safe).
    */
-  void clear() {
+  synchronized void clear() {
     tickConsumptions.clear();
     totalConsumption = 0;
   }

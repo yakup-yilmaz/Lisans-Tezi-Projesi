@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense, memo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import axios from 'axios'
 import { ActionButton, AlertTicker, ClockPanel, Notice, PageHeader, Shell, TabButton, ToastContainer, ScreenSkeleton } from './components/ui'
 
@@ -114,7 +114,7 @@ export default function App() {
   const [microAlerts, setMicroAlerts] = useState([])
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now())
+  const [, setCurrentTimeMs] = useState(() => Date.now())
   const [lastStatusSyncAt, setLastStatusSyncAt] = useState(() => Date.now())
   const seenOrderIds = useRef(new Set())
   const seenCapacityAlertKeys = useRef(new Set())
@@ -291,6 +291,7 @@ export default function App() {
   }, [simData])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- polling fetch: state is set after the async response
     void loadAll(reportPeriod)
     const timer = window.setInterval(() => void loadAll(reportPeriod), SNAPSHOT_REFRESH_MS)
     return () => window.clearInterval(timer)

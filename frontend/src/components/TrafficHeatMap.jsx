@@ -92,17 +92,6 @@ function trafficToGlow(factor) {
   return `hsla(${hue}, 90%, 50%, 0.35)`
 }
 
-/** Trafik katsayısından okunabilir etiket */
-function trafficLabel(factor) {
-  const f = Number(factor) || 1
-  if (f < 0.8) return 'Boş'
-  if (f < 1.1) return 'Normal'
-  if (f < 1.5) return 'Orta'
-  if (f < 2.0) return 'Yoğun'
-  if (f < 2.5) return 'Çok Yoğun'
-  return 'Tıkanık'
-}
-
 /** Yol genişliği — yoğun yollar biraz daha kalın */
 function trafficWidth(factor) {
   const f = Math.max(0.5, Math.min(3.0, Number(factor) || 1))
@@ -110,8 +99,8 @@ function trafficWidth(factor) {
 }
 
 export function TrafficHeatMap({ nodes, edges }) {
-  const safeNodes = Array.isArray(nodes) ? nodes : []
-  const safeEdges = Array.isArray(edges) ? edges : []
+  const safeNodes = useMemo(() => (Array.isArray(nodes) ? nodes : []), [nodes])
+  const safeEdges = useMemo(() => (Array.isArray(edges) ? edges : []), [edges])
 
   const layoutedNodes = useMemo(() => {
     if (safeNodes.length === 0) return safeNodes

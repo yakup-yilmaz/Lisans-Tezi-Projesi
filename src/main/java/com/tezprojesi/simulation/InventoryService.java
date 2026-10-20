@@ -229,6 +229,7 @@ public final class InventoryService {
       stock.put(item.getProductId(), nextStock);
       // Record consumption for moving average tracking
       recordConsumption(depotId, item.getProductId(), item.getQuantity());
+      updateBaselineFromMovingAverage(depotId, item.getProductId());
     }
   }
 
@@ -252,6 +253,7 @@ public final class InventoryService {
       }
       // Record consumption for moving average tracking
       recordConsumption(depotId, item.getProductId(), item.getQuantity());
+      updateBaselineFromMovingAverage(depotId, item.getProductId());
     }
   }
 
@@ -266,6 +268,7 @@ public final class InventoryService {
     Map<String, Integer> stock = stockByDepot.computeIfAbsent(depotId, key -> new ConcurrentHashMap<>());
     stock.put(productId, current - quantity);
     recordConsumption(depotId, productId, quantity);
+    updateBaselineFromMovingAverage(depotId, productId);
   }
 
   public void addItems(String depotId, List<OrderLine> items) {
@@ -335,7 +338,7 @@ public final class InventoryService {
     } else {
       // No consumption history yet; initialize to current stock
       int currentStock = getTotalStock(depotId, productId);
-      newBaseline = Math.max(1, currentStock);
+      newBaseline = currentStock;
     }
 
     baselineStockByDepot.computeIfAbsent(depotId, key -> new ConcurrentHashMap<>()).put(productId, newBaseline);

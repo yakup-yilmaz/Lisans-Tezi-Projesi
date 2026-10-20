@@ -39,17 +39,6 @@ function progressByCategory(products, orders) {
   }))
 }
 
-function statusTone(status) {
-  switch (status) {
-    case 'LOADING':   return 'amber'
-    case 'DELIVERING': return 'emerald'
-    case 'EN_ROUTE':
-    case 'RETURNING': return 'emerald'
-    case 'IDLE':      return 'sky'
-    default:           return 'default'
-  }
-}
-
 const tooltipSt = {
   ...tooltipStyle,
   backgroundColor: '#111620',
@@ -59,7 +48,7 @@ const tooltipSt = {
 
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 
-const OverviewSidebar = memo(function OverviewSidebar({ status, progress, nodes, edges, vehicles, orders, replenishments, summary, kpis, products }) {
+const OverviewSidebar = memo(function OverviewSidebar({ progress, nodes, edges, vehicles, orders, replenishments, summary, kpis, products }) {
   const idle      = useMemo(() => vehicles.filter((v) => v.status === 'IDLE').length, [vehicles])
   const enRoute   = useMemo(() => vehicles.filter((v) => v.status === 'EN_ROUTE').length, [vehicles])
   const loading   = useMemo(() => vehicles.filter((v) => v.status === 'LOADING').length, [vehicles])

@@ -1,1008 +1,466 @@
-# Logistics Decision Support System - Intelligent Distribution Network Simulator
+# 🚚 LogiSim-DSS: Otonom Lojistik & Çok-Depolu Karar Destek Simülatörü
 
 <div align="center">
 
-![Java](https://img.shields.io/badge/Java-17+-orange?style=for-the-badge&logo=java)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.1.5-green?style=for-the-badge&logo=spring)
-![React](https://img.shields.io/badge/React-19.2-blue?style=for-the-badge&logo=react)
-![TypeScript](https://img.shields.io/badge/TypeScript-Latest-blue?style=for-the-badge&logo=typescript)
-![License](https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge)
+![Java](https://img.shields.io/badge/Java-17-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.1.5-6DB33F?style=for-the-badge&logo=spring-boot&logoColor=white)
+![React](https://img.shields.io/badge/React-19.2-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![Vite](https://img.shields.io/badge/Vite-7.3-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
+![Tests](https://img.shields.io/badge/Tests-55%2F55%20Passing-success?style=for-the-badge&logo=junit5&logoColor=white)
+![ESLint](https://img.shields.io/badge/Frontend_Lint-0_Errors_--_0_Warnings-success?style=for-the-badge&logo=eslint&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
 
-**A comprehensive real-time logistics simulation platform for optimizing last-mile delivery networks through intelligent routing, dynamic inventory management, and advanced decision support capabilities.**
+**E-Ticaret ve hızlı teslimat lojistiğinde çok-kademeli dağıtım ağlarını, dinamik envanter ikmalini, rota sapma kısıtlarını ve araç atamalarını gerçek zamanlı simüle eden deterministik karar destek sistemi.**
 
-[Documentation](#documentation) • [Architecture](#architecture) • [Quick Start](#quick-start) • [API Reference](#api-reference)
+[Özellikler](#-öne-çıkan-özellikler) • [Sistem Mimarisi](#-sistem-mimarisi) • [Algoritmik ve Matematiksel Modeller](#-algoritmik-ve-matematiksel-modeller) • [Ağ ve Filo Topolojisi](#-coğrafi-ağ-ve-filo-topolojisi) • [Ürün Kataloğu](#-ürün-kataloğu-ve-kargo-kategorileri) • [REST API](#-kapsamlı-rest-api-referansı) • [Arayüz Modülleri](#-frontend-arayüz-modülleri) • [Test ve Doğrulama](#-test-güvenilirliği-ve-doğrulama-matrisi) • [Bilinen Sınırlar ve Hata Bildirimi](#-bilinen-sınırlar-varsayımlar-ve-hata-bildirimi) • [Kurulum](#-kurulum-ve-çalıştırma)
 
 </div>
 
 ---
 
-## 📋 Table of Contents
+## 📌 Problem ve Proje Amacı
 
-1. [Overview](#overview)
-2. [Key Features](#key-features)
-3. [System Architecture](#system-architecture)
-4. [Technology Stack](#technology-stack)
-5. [Project Structure](#project-structure)
-6. [Quick Start](#quick-start)
-7. [API Reference](#api-reference)
-8. [Configuration](#configuration)
-9. [Development](#development)
-10. [Documentation](#documentation)
-11. [Performance Metrics](#performance-metrics)
-12. [Contributing](#contributing)
-13. [License](#license)
+Geleneksel lojistik planlama yazılımları statik ve deterministik olmayan varsayımlarla çalışır. Ancak gerçek dünya kentsel lojistiğinde:
+* **Öngörülemez Talep:** Mikro depolarda tüketim anlık ve tahmin edilemez şekilde dalgalanır; statik emniyet stoğu formülleri ya stoksuzluğa (stockout) ya da atıl sermaye birikimine yol açar.
+* **Dinamik Trafik ve Gişe Maliyetleri:** Trafik yoğunluğu günün saatine (Rush-Hour) göre kenar ağırlıklarını değiştirir; otoyol ve köprü geçiş ücretleri araç türüne (ağır vasıta farkı) göre toplam sevkiyat kârlılığını doğrudan etkiler.
+* **Açgözlü (Greedy) Filo Kilitlenmesi:** Açgözlü atama mekanizmaları, sisteme ilk düşen 5 m³'lük küçük bir koli için filodaki 85 m³'lük tırı depoya bağlayarak büyük sevkiyatları açıkta bırakır ve filoyu kilitler.
+* **Fiziksel ve Yasal Kısıtlar:** Soğuk hava zinciri, derin dondurucu veya reçeteli tıbbi ürün kısıtları her aracın her kargoyu taşımasına izin vermez.
+* **Operatör Güvensizliği ve Deadlock:** Düşük doluluklu araçların erken saatlerde haksız yere sevk edilmesi yüksek operasyonel zarar üretirken; hiç çıkış yapamaması yüklerin depoda rehin kalmasına (starvation/deadlock) sebep olur.
+
+**LogiSim-DSS**, bu kısıtları 1 dakikalık zaman adımlarıyla (tick-based) modelleyen; **Dinamik Ağırlıklı Dijkstra**, **100-Tick Kayan Pencereli (s, S) Envanter Politikası**, **Best-Fit Hacim Sezgiseli**, **Anti-Starvation Koridor Bölüştürme**, **Gezgin Satıcı (TSP) Çoklu Durak Konsolidasyonu** ve **Human-in-the-Loop** onay mekanizmalarını tek bir reaktif platformda birleştiren akademik ve endüstriyel bir Karar Destek Sistemidir.
 
 ---
 
-## 🎯 Overview
+## ✨ Öne Çıkan Özellikler
 
-This project implements a **Logistics Decision Support System** designed to simulate and optimize complex multi-depot distribution networks. The system models real-world challenges including dynamic order generation, inventory management across multiple depot tiers, vehicle routing optimization, traffic simulation, and cost analysis.
-
-The platform enables logistics operators to:
-- **Simulate** real-world distribution scenarios in a controlled time-compressed environment
-- **Optimize** vehicle dispatch decisions using intelligent policy engines
-- **Analyze** key performance indicators (KPIs) including delivery times, costs, and resource utilization
-- **Monitor** real-time vehicle movements and inventory levels
-- **Evaluate** sustainability metrics including CO₂ emissions and fuel consumption
-
-### Use Cases
-- **Last-mile delivery optimization** for e-commerce logistics
-- **Multi-depot network planning** for large-scale distribution operations
-- **Route optimization** under traffic and capacity constraints
-- **Inventory policy evaluation** using (s,S) replenishment models
-- **Dispatch decision validation** through human-in-the-loop approval workflows
-- **Sustainability analysis** for fleet electrification and carbon footprint reduction
+* **⏱️ Deterministik Tick-Based Simülasyon Motoru:** Gerçek dünya zamanını 1-dakikalık adımlarla sıkıştırarak çalıştıran (`TICK_MINUTES = 1L`), tekrarlanabilir ve bilimsel testlere olanak tanıyan çekirdek motor.
+* **🔒 Thread-Safe Eşzamanlılık (`ReentrantLock`):** Simülasyon motorunun karar döngüsü ile REST API üzerinden gelen operatör müdahalelerini (`approvalLock`) veri çakışmasız (race-condition-free) yöneten mimari.
+* **📦 Dinamik Baseline & $(s, S)$ İkmal Politikası:** 100-tick kayan pencerede hareketli ortalama (Moving Average) hesaplayarak tüketim trendi değiştikçe hedef stok seviyesini ($S$) artıran/azaltan, yoldaki stokları (`incomingQuantity`) hesaba katarak çift siparişi (double-ordering) önleyen adaptif envanter kontrolü.
+* **🚚 Best-Fit Araç Seçimi & Atıl Hacim Cezası:** Boş kalan her $1\text{ m}^3$ hacim için $0.25$ ceza puanı uygulayan, açgözlü filo seçimini engelleyen ve büyük tırları küçük yüklere rehin bırakmayan optimizasyon.
+* **🛡️ Sınırlı Bekleme İndirimi (Aging Cap = 10 Puan):** Depoda bekleyen araçlara dakika başı $1.5$ puan bekleme teşviki verirken, bunu maksimum $10$ puan ile sınırlandırarak Best-Fit kuralının aşılmasını önleyen mimari.
+* **🌐 Paralel Koridor Dağıtımı (Anti-Starvation Partitioning):** Bir araç bir coğrafi koridoru (örn: Doğu koridoru / M1) konsolide etmek için sahiplendiğinde (`claimedRequestIds`), diğer boş aracın bağımsız olarak Batı koridoruna (M2) yönelmesini sağlayan talep bölüştürme mekanizması.
+* **⚡ $O(1)$ Bitmask Yetenek ve Kategori Filtresi:** Soğuk zincir (`COOLED_BOX`), derin dondurucu (`DEEP_FREEZE`), hassas koli rafı (`FRAGILE_RACK`), kilitli medikal kasa (`MEDICAL_LOCK`) gibi ürün isterlerini bitwise AND/OR seviyesinde süzen yüksek performanslı güvenlik bariyeri.
+* **🗺️ Dinamik Ağırlıklı Dijkstra & Akıllı Route Cache:** Değişen 24 saatlik trafik katsayılarına, 6 adet otoyol/köprü gişe ücretine ve ağır vasıta çarpanına ($\times 1.35$) göre en düşük maliyetli rotayı hesaplayan, aynı trafik durumundaki mükerrer hesaplamaları $O(1)$ sürede dönen `ConcurrentHashMap` rota önbelleği.
+* **🔀 %35 Sabit Rota Sapması & TSP Çoklu Durak Konsolidasyonu:** Yolda giderken ek mikro depolara uğrayıp yük toplamayı sağlayan Gezgin Satıcı permütasyon optimizasyonu, değerli kargolara tanınan finansal sapma bonusu (`totalValue / 100.0`) ve tezin onaylı sabit %35 sapma kuralı.
+* **🛑 Kademeli SLA Eşikleri & Finansal Zarar Uyarılı Force Dispatch:** 5 saatlik (300 tick) doğal konsolidasyon toleransı sonrasında karesel tırmanan aging skoruyla mesai bitimi (Aging $\ge 600 - 800$) operatör onay mekanizması; %5 dolulukta aracın kilitlenmesini finansal zarar ikazıyla çözen kurtarma sübabı.
+* **🎨 Segment-Based LERP Animasyonu:** Üçüncü parti harita kütüphanelerine (Leaflet/Mapbox) bağımlılık olmadan, saf HTML5/SVG Canvas üzerinde araçların koordinatlarını lineer interpolasyon (LERP) ile 60 FPS pürüzsüz akıtan reaktif arayüz.
+* **🌱 Sürdürülebilirlik & CO2 Emisyon Analitiği:** Elektrikli araçların ($0.0\text{ kg CO}_2/\text{km}$), benzinli ($0.7\text{ kg CO}_2/\text{km}$) ve dizel araçların ($0.8\text{ kg CO}_2/\text{km}$) emisyonlarını takip edip dizel baz çizgisine göre net kurtarılan CO2 miktarını hesaplayan çevresel raporlama.
 
 ---
 
-## ✨ Key Features
+## ⚙️ Sistem Mimarisi
 
-### 🚚 Intelligent Dispatch System
-- **Multi-Depot Optimization**: Automatically selects best micro-depot for customer orders based on inventory availability and routing efficiency
-- **Vehicle-Capability Matching**: Matches product requirements (temperature control, fragility) with available vehicle capabilities
-- **Dynamic Routing**: Computes shortest paths with real-time traffic factor adjustments and toll cost integration
-- **Human-in-the-Loop Approval**: Manual override capability for critical dispatch decisions with cost threshold alerts
+```mermaid
+flowchart TD
+    subgraph Frontend["Frontend Katmanı (React 19.2 + Vite 7.3)"]
+        UI["Operasyon & Yönetim Paneli"]
+        Canvas["Custom SVG Canvas (LERP Motoru)"]
+        Heatmap["Trafik Isı Haritası (TrafficHeatMap)"]
+        Polling["HTTP Short Polling (1000 ms)"]
+        Panel["Manuel Kontrol Paneli (Human-in-the-Loop)"]
+    end
 
-### 📍 Advanced Routing Engine
-- **Graph-Based City Modeling**: 35+ intersections, 12 customer nodes, 3 depot nodes with real-world spatial coordinates
-- **Shortest Path Computation**: Dijkstra algorithm with weighted edges (distance, traffic, tolls)
-- **Multi-Stop Route Planning**: Optimization for consolidating multiple deliveries per vehicle
-- **Traffic-Aware Routing**: Dynamic traffic factor updates that influence travel time and cost
+    subgraph API["REST Controller Katmanı (Spring Boot)"]
+        SimCtrl["SimulationController"]
+        InvCtrl["InventoryController"]
+        VehCtrl["VehicleController & ReportController"]
+        GraphCtrl["GraphController"]
+        RepCtrl["ReplenishmentController"]
+    end
 
-### 📦 Inventory Management
-- **(s,S) Replenishment Policy**: Automated stock replenishment based on configurable reorder points
-- **Depot-Level Stock Tracking**: Real-time inventory levels across main depot and micro-depots
-- **Demand Forecasting Integration**: Hourly demand patterns with configurable volume ranges
-- **Stockout Prevention**: Automatic order routing to alternative depots on inventory constraints
+    subgraph Engine["Simülasyon Çekirdeği"]
+        RLock{{"ReentrantLock (approvalLock)"}}
+        SimEngine["SimulationEngine (Tick Loop)"]
+        Routing["RoutingService (Dijkstra + O(1) Cache)"]
+        InvService["InventoryService ((s,S) + 100-Tick Moving Avg)"]
+        MoveService["VehicleMovementService (Physics & Telemetry)"]
+        TrafficMgr["TrafficManager (24h Diurnal Curve)"]
+    end
 
-### 🚗 Vehicle Management
-- **Heterogeneous Fleet**: Electric, Gasoline, and Diesel vehicles with different operating costs
-- **Capacity Constraints**: Volume-based capacity tracking and utilization monitoring
-- **Fuel Type Tracking**: CO₂ emission calculation based on vehicle fuel type
-- **Real-Time Position Tracking**: GPS-like coordinate tracking for vehicle movements
+    subgraph Data["Domain & Topoloji Modeli"]
+        Graph["Şehir Grafı (70+ Düğüm, 140+ Kenar, 6 Gişe)"]
+        Fleet["Heterojen Filo (7 Araç, 35 - 100 m³)"]
+        Catalog["Ürün Kataloğu (10 Ürün, 5 Kategori, Bitmask)"]
+        Stock["Ana Depo & 5 Mikro Depo Envanteri"]
+    end
 
-### 📊 Comprehensive Metrics & Analytics
-- **KPI Dashboard**: Total orders, completion rate, delivery times, vehicle utilization
-- **Cost Breakdown**: Fuel, tolls, labor, handling, and penalty costs
-- **Trip Analytics**: Single-stop vs. multi-stop trip comparison and ROI calculation
-- **Sustainability Metrics**: CO₂ emissions, emission savings, and green vehicle incentives
-- **Time-Series Event Logging**: Detailed timeline of all simulation events with 60+ event types
+    Polling -->|GET /api/simulation/status| SimCtrl
+    Polling -->|GET /api/simulation/summary| SimCtrl
+    Panel -->|POST /api/inventory/consume| InvCtrl
+    Panel -->|POST /api/simulation/approve-dispatch| SimCtrl
 
-### 🎮 Simulation Control
-- **Tick-Based Time Management**: 1-minute tick granularity with configurable simulation speed
-- **Step-Through Debugging**: Manual advancement of simulation by configurable tick counts
-- **Async Simulation Engine**: Non-blocking background execution with real-time status updates
-- **Reset & Restart Capabilities**: Complete state reset for A/B testing and scenario analysis
+    SimCtrl & InvCtrl & VehCtrl & GraphCtrl & RepCtrl --> RLock
+    RLock --> SimEngine
 
-### 🌐 Real-Time Web Dashboard
-- **Multi-Panel Monitoring**: Overview, Fleet Status, Map Visualization, Operations Console
-- **Interactive Map Canvas**: Live vehicle position rendering with geospatial awareness
-- **Traffic Heat Map**: Visual representation of congested routes and dynamic traffic factors
-- **Live Event Stream**: Real-time event notifications with filtering and search
-- **Responsive Design**: Tailwind CSS + Flowbite components for modern UX
+    SimEngine --> Routing
+    SimEngine --> InvService
+    SimEngine --> MoveService
+    SimEngine --> TrafficMgr
 
----
-
-## 🏗️ System Architecture
-
-### High-Level Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    React Dashboard (Frontend)                    │
-│  - Overview Screen  - Fleet Screen  - Map Screen - Operations   │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │ HTTP/REST
-                           │
-┌──────────────────────────▼──────────────────────────────────────┐
-│            Spring Boot REST API (Port 8080)                     │
-├──────────────────────────────────────────────────────────────────┤
-│  /api/simulation          │ /api/orders        │ /api/metrics   │
-│  /api/graph               │ /api/vehicles      │ /api/routes    │
-└──────┬───────────────────────────────────────────────────────────┘
-       │ Event-Driven Bus
-       │
-┌──────▼───────────────────────────────────────────────────────────┐
-│            Simulation Engine (Core Logic)                        │
-├──────────────────────────────────────────────────────────────────┤
-│ ┌─────────────────────────────────────────────────────────────┐  │
-│ │ Tick-Based Event Loop (1-minute granularity)               │  │
-│ └────┬──────────────────────────────────────────────────────┬─┘  │
-│      │                                                        │   │
-│  ┌───▼────────────┐  ┌────────────────────┐  ┌────────────────┐ │
-│  │ Order Generator│  │ Routing Service    │  │ Traffic Manager│ │
-│  │  - Demand Gen  │  │  - Path Compute    │  │ - Traffic Sim  │ │
-│  │  - S,S Policy  │  │  - Cost Calc       │  │ - Toll Mgt     │ │
-│  └────────────────┘  └────────────────────┘  └────────────────┘ │
-│                                                                  │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │      Dispatch Service                                      │  │
-│  │  - Depot Selection     - Vehicle Selection                │  │
-│  │  - Dispatch Policy Eval - Event Publishing                │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │      Inventory Service  │  Vehicle Movement Service       │  │
-│  │  - Stock Tracking       │  - Position Updates            │  │
-│  │  - Replenishment        │  - Route Following             │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │      Metrics Event Handler                                 │  │
-│  │  - KPI Aggregation  - Cost Tracking - Report Generation   │  │
-│  └───────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-
-                          In-Memory Data Grid
-              ┌─────────────────────────────────────┐
-              │   Depots    │  Orders   │ Vehicles  │
-              │   CityGraph │  Products │ Inventory │
-              └─────────────────────────────────────┘
-```
-
-### Dispatch Decision Flow
-
-```
-Order Arrives
-    │
-    ▼
-┌─────────────────────────────────┐
-│  Depot Selector                 │
-│  - Find eligible depots         │
-│  - Check inventory availability │
-│  - Minimize distance/cost       │
-└────────┬────────────────────────┘
-         │
-         ▼
-    ┌─────────────────────────────────┐
-    │  Vehicle Selector               │
-    │  - Check capacity constraints   │
-    │  - Match product capabilities  │
-    │  - Evaluate vehicle status     │
-    └────────┬────────────────────────┘
-             │
-             ▼
-        ┌─────────────────────────────────┐
-        │  Routing Service                │
-        │  - Compute shortest path        │
-        │  - Calculate cost               │
-        │  - Check feasibility            │
-        └────────┬────────────────────────┘
-                 │
-                 ▼
-            ┌─────────────────────────────────┐
-            │  Dispatch Policy (Optional)     │
-            │  - Time window checks           │
-            │  - Load fraction validation     │
-            │  - Approval requirement check  │
-            └────────┬────────────────────────┘
-                     │
-                     ▼
-           ┌──────────────────────────┐
-           │  Order Assigned Event    │
-           │  Vehicle Assigned Event  │
-           └──────────────────────────┘
+    Routing --> Graph
+    InvService --> Stock
+    MoveService --> Fleet
+    SimEngine --> Catalog
 ```
 
 ---
 
-## 🛠️ Technology Stack
+## 🧠 Algoritmik ve Matematiksel Modeller
 
-### Backend
-| Component | Technology | Version | Purpose |
-|-----------|-----------|---------|---------|
-| **Framework** | Spring Boot | 3.1.5 | REST API & Dependency Injection |
-| **Language** | Java | 17+ | Type-safe backend implementation |
-| **Build Tool** | Maven | Latest | Project building & dependency management |
-| **Documentation** | SpringDoc OpenAPI | 2.5.0 | API documentation & Swagger UI |
-| **JSON Processing** | Jackson | Latest | DTO serialization & API payloads |
-| **Testing** | JUnit 5, Mockito | Latest | Unit & integration testing |
+### 1. Dinamik Ağırlıklı Dijkstra ve Rota Maliyeti
+Bir kenarın ($u, v$) anlık seyahat maliyeti baz mesafe, günün saatine göre değişen trafik çarpanı ve otoyol/köprü geçiş ücretinin ağırlıklı toplamıdır:
 
-### Frontend
-| Component | Technology | Version | Purpose |
-|-----------|-----------|---------|---------|
-| **Framework** | React | 19.2+ | Component-based UI |
-| **Bundler** | Vite | 7.2.4 | Lightning-fast dev server & build |
-| **Styling** | Tailwind CSS | 4.1+ | Utility-first CSS framework |
-| **UI Components** | Flowbite React | 0.12.10 | Pre-built accessible components |
-| **Charts** | Recharts | 3.8+ | Data visualization |
-| **HTTP Client** | Axios | 1.13+ | API communication |
-| **Linting** | ESLint | 9.39+ | Code quality checks |
+$$\text{Weight}(u, v) = \left(\text{Distance}_{uv} \times \text{TrafficMultiplier}(t)\right) + \text{TollCost}_{uv} \times \text{VehicleTollMultiplier}$$
 
-### Infrastructure
-- **Database**: In-Memory (ConcurrentHashMap & Collections for real-time performance)
-- **Async Processing**: Java Thread Model with custom tick-based scheduler
-- **Event Bus**: Publisher-Subscriber pattern for decoupled component communication
-- **Graph Processing**: Custom shortest-path algorithm with weighted edges
+* **Ağır Vasıta Gişe Çarpanı:** Ağır vasıtalar (kamyon ve tırlar) için gişe ücreti $\times 1.35$ çarpanı ile hesaplanır (`HEAVY_VEHICLE_TOLL_MULTIPLIER = 1.35`).
+* **Akıllı Rota Önbelleği (Intelligent Route Cache):** `(source, target, trafficGeneration)` anahtarıyla tutulan `ConcurrentHashMap`, aynı trafik neslindeki tekrarlı sorguları $O(1)$ karmaşıklıkta döner. Trafik katsayısı değiştiğinde `trafficGeneration` artırılarak önbellek atomik olarak geçersiz kılınır.
 
 ---
 
-## 📁 Project Structure
+### 2. Dinamik Baseline ve $(s, S)$ İkmal Modeli
+Mikro depodaki bir ürünün tüketim geçmişi 100-tick'lik kayan pencerede izlenir:
 
-```
-tezprojesi-project/
-├── backend/
-│   ├── src/
-│   │   ├── main/java/com/tezprojesi/
-│   │   │   ├── SimApp.java                      # Spring Boot entry point
-│   │   │   ├── DistanceCalculator.java          # Graph initialization utility
-│   │   │   │
-│   │   │   ├── api/                             # REST API Layer
-│   │   │   │   ├── controller/
-│   │   │   │   │   ├── SimulationController.java    # Simulation lifecycle endpoints
-│   │   │   │   │   ├── OrderController.java         # Order query endpoints
-│   │   │   │   │   ├── GraphController.java         # Graph CRUD & routing endpoints
-│   │   │   │   │   └── MetricsController.java       # KPI & analytics endpoints
-│   │   │   │   ├── dto/                        # Data Transfer Objects
-│   │   │   │   ├── mapper/                     # DTO mappers
-│   │   │   │   ├── repository/                 # In-Memory data access
-│   │   │   │   ├── exception/                  # Custom exceptions
-│   │   │   │   └── config/                     # Configuration properties
-│   │   │   │
-│   │   │   ├── domain/                         # Domain Model (Entities)
-│   │   │   │   ├── Depot.java
-│   │   │   │   ├── Vehicle.java
-│   │   │   │   ├── Order.java
-│   │   │   │   ├── Node.java
-│   │   │   │   ├── Edge.java
-│   │   │   │   ├── Product.java
-│   │   │   │   ├── OrderStatus.java
-│   │   │   │   ├── VehicleStatus.java
-│   │   │   │   ├── NodeType.java
-│   │   │   │   └── [other domain objects]
-│   │   │   │
-│   │   │   ├── dispatch/                       # Dispatch Logic
-│   │   │   │   ├── DispatchService.java           # Main dispatch orchestrator
-│   │   │   │   ├── DepotSelector.java             # Depot selection strategy
-│   │   │   │   ├── VehicleSelector.java           # Vehicle selection strategy
-│   │   │   │   ├── DispatchPolicy.java            # Policy enforcement
-│   │   │   │   ├── DispatchResult.java            # Dispatch outcome DTO
-│   │   │   │   └── VehicleSelector.java
-│   │   │   │
-│   │   │   ├── routing/                        # Routing Engine
-│   │   │   │   ├── CityGraph.java                 # Graph data structure
-│   │   │   │   ├── RoutingService.java            # Shortest path computation
-│   │   │   │   └── [routing utilities]
-│   │   │   │
-│   │   │   ├── simulation/                     # Simulation Core
-│   │   │   │   ├── SimulationEngine.java          # Main simulation loop
-│   │   │   │   ├── OrderGenerator.java            # Order generation service
-│   │   │   │   ├── InventoryService.java          # Inventory management
-│   │   │   │   ├── VehicleMovementService.java    # Vehicle position updates
-│   │   │   │   ├── TrafficManager.java            # Traffic simulation
-│   │   │   │   ├── ReplenishmentService.java      # (s,S) policy engine
-│   │   │   │   ├── ProductCatalogService.java     # Product definitions
-│   │   │   │   ├── MetricsEventHandler.java       # KPI aggregation
-│   │   │   │   ├── VehicleReportService.java      # Trip report generation
-│   │   │   │   └── SimulationEventLogService.java # Event timeline
-│   │   │   │
-│   │   │   ├── events/                         # Event System
-│   │   │   │   ├── EventBus.java                  # Publisher-Subscriber
-│   │   │   │   ├── OrderAssignedEvent.java
-│   │   │   │   ├── VehicleAssignedEvent.java
-│   │   │   │   └── [other events]
-│   │   │   │
-│   │   │   └── optimization/                   # Optimization algorithms
-│   │   │       └── [advanced optimization modules]
-│   │   │
-│   │   └── test/                              # Unit & Integration Tests
-│   │       └── java/com/tezprojesi/
-│   │           ├── api/
-│   │           ├── dispatch/
-│   │           ├── routing/
-│   │           └── simulation/
-│   │
-│   └── pom.xml                               # Maven configuration
-│
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx                           # Root component
-│   │   ├── main.jsx                          # Entry point
-│   │   ├── index.css                         # Global styles
-│   │   │
-│   │   ├── screens/                          # Main screen components
-│   │   │   ├── OverviewScreen.jsx               # Dashboard summary
-│   │   │   ├── FleetScreen.jsx                  # Vehicle management
-│   │   │   ├── MapScreen.jsx                    # Map visualization
-│   │   │   └── OperationsScreen.jsx             # Manual controls
-│   │   │
-│   │   ├── components/                       # Reusable components
-│   │   │   ├── ManuelControlPanel.jsx           # Simulation controls
-│   │   │   ├── MapCanvas.jsx                    # Map rendering
-│   │   │   ├── TrafficHeatMap.jsx               # Traffic visualization
-│   │   │   ├── ui.jsx                           # UI utilities
-│   │   │   └── chartTheme.js                    # Chart configurations
-│   │   │
-│   │   └── assets/                           # Static assets
-│   │
-│   ├── public/                               # Public files
-│   ├── package.json                          # NPM dependencies
-│   ├── vite.config.js                        # Vite configuration
-│   ├── tailwind.config.js                    # Tailwind CSS config
-│   ├── eslint.config.js                      # ESLint rules
-│   └── README.md                             # Frontend specific docs
-│
-├── scripts/
-│   └── run-backend.ps1                       # PowerShell startup script
-│
-├── scratch/
-│   └── calculate_distances.py                # Utility script for distance calc
-│
-├── pom.xml                                   # Root Maven POM
-├── finalraporu.md                            # Thesis final report (TR)
-├── kontrol.md                                # Internal control documentation
-└── README.md                                 # This file
-```
+$$\text{MovingAverage} = \frac{1}{N} \sum_{i=1}^{N} \text{Consumption}_i \quad (N = 100)$$
+
+$$\text{TargetLevel } (S) = \lceil \text{MovingAverage} \times 1.2 \rceil$$
+
+İkmal tetikleme ve talep formülü:
+* Mevcut stok $s \le 40$ birimin (`AUTO_REPLENISH_TRIGGER`) altına indiğinde ikmal ihtiyacı oluşur.
+* Hedef seviye $S = 80$ birimdir (`AUTO_REPLENISH_TARGET`).
+* Net talep hesabı:
+  $$\text{Talep} = \max\left(0, \ S - (\text{Mevcut Stok} + \text{Yoldaki Stok})\right)$$
+* Yoldaki ikmaller (`incomingQuantity`) doğrudan hesaba dahil edildiği için mükerrer siparişler (double-ordering) tamamen engellenir.
 
 ---
 
-## 🚀 Quick Start
+### 3. Best-Fit Araç Seçimi ve Sınırlı Bekleme İndirimi
+Bir aracın yük için seçim maliyeti, boş kalan kapasiteye verilen atıl hacim cezası ve bekleme süresi indirimiyle hesaplanır:
 
-### Prerequisites
-- **Java 17+** (JDK)
-- **Node.js 18+** & NPM 9+
-- **Maven 3.8+**
-- **Git**
+$$\text{wastePenalty} = \max\left(0.0, \ (\text{Kapasite} - \text{Yük Hacmi}) \times 0.25\right)$$
 
-### Installation & Setup
+$$\text{selectionCost} = \text{wastePenalty} - \min(10.0, \ \text{waitedTicks} \times 1.5)$$
 
-#### 1. Clone & Navigate to Project
+* **Atıl Hacim Cezası ($0.25$ puan/$\text{m}^3$):** 5 m³'lük küçük bir sipariş geldiğinde 85 m³'lük tır $20.0$ ceza puanı alırken, 35 m³'lük araç yalnızca $7.5$ ceza puanı alır.
+* **Bekleme İndirimi Tavanı (Cap = 10 Puan):** Tır ne kadar uzun süre beklerse beklesin alabileceği bekleme indirimi 10 puanı geçemez (`MAX_AGING_DISCOUNT = 10.0`). Bu sayede Best-Fit kuralı asla delinmez ve tır küçük yüklere rehin edilemez.
+* **Konsolidasyon Esnekliği:** Tır çoklu duraklarla mikro depolardan ek sipariş topladıkça boş hacmi azalır, `wastePenalty` düşer ve büyük sevkiyatları doğal olarak üstlenir.
+
+---
+
+### 4. 5 Saatlik Konsolidasyon Penceresi ve Kademeli SLA Onay Matrisi
+Düşük doluluklu araçların erken saatlerde haksız yere sevk edilmesini veya depoda sonsuza kadar kilitlenmesini önleyen tolerans modeli:
+
+$$\text{overdueTicks} = \max\left(0L, \ t_{\text{waited}} - 300L\right) \quad \text{(İlk 300 dk / 5 Saat Grace Period)}$$
+
+$$\text{agingScore} = \min\left(1000.0, \ (\text{overdueTicks})^2 \times 0.02\right)$$
+
+| Doluluk Oranı | Grace Period ($T_{\text{grace}}$) | Otonom Çıkış? | Operatör Onayı Açılma Eşiği | Davranış & Açıklama |
+| :--- | :---: | :---: | :--- | :--- |
+| **%75 - %100** | 0 dk | **EVET (Anında)** | Gerek yok | Optimum doluluk; beklemeden anında sevk edilir. |
+| **%50 - %74** | 180 dk (3 saat) | **EVET (180 dk sonra)** | 90. dakikada erken onaylanabilir | 3 saat konsolidasyon bekler; dolmazsa otonom çıkar. |
+| **%20 - %49** | 300 dk (5 saat) | **HAYIR** | **Aging $\ge 600$ (~8. Saat / Mesai Sonu)** | 5 saat tolerans sonrası gün sonunda manuel onayla çıkar. |
+| **%10 - %19** | 300 dk (5 saat) | **HAYIR** | **Aging $\ge 800$ (~8.3 Saat)** | Kritik düşük yük onayıyla mesai bitimi çıkarılır. |
+| **< %10 (Örn: %5)**| 300 dk (5 saat) | **HAYIR** | **Aging = 1000 (Finansal Zarar Uyarısı)** | Deadlock koruması: Operatör zararına sevki görerek onaylar. |
+
+---
+
+### 5. Multi-Stop Rota Sapması ve Gezgin Satıcı (TSP) Konsolidasyonu
+Bir araç yola çıktığında rota üzerindeki diğer depolardan ek sipariş alabilir. Ancak sapma sınırsız değildir:
+
+$$\text{valueBonusKm} = \min\left(60.0, \ \frac{\text{Toplam Kargo Finansal Değeri}}{100.0}\right)$$
+
+$$\text{maxBypassKm} = (\text{Ana Rota Mesafesi} \times 0.35) + \text{valueBonusKm} + 15.0\text{ km}$$
+
+* **%35 Sabit Tolerans:** Tezin onaylı formülü gereği rota sapma oranı %35 ile sınırlandırılmıştır (`MULTI_STOP_DEVIATION_RATIO = 0.35`); mantıksız zikzaklar engellenir.
+* **Gezgin Satıcı Permütasyon Motoru:** Eklenen her durak için durakların tüm permütasyonları taranarak en kısa mesafeli teslimat sırası (`generatePermutations`) bulunur.
+
+---
+
+### 6. Bir Yükün Araca Atanma Mimarisi (7 Aşamalı Karar Motoru)
+
+Sistemdeki hiçbir yük rastgele bir araca verilmez; 7 aşamalı katı bir filtreden geçer:
+1. **Güvenlik ve Yetenek Maskesi Kontrolü:** Aracın `capabilityMask` değeri ile kargonun `requiredCapabilities` maskesi bitwise AND seviyesinde test edilir (`CapabilityMasks.vehicleCoversRequiredMask`). Eşleşmiyorsa araç anında elenir.
+2. **Kategori Uyumu:** Aracın desteklediği kategoriler (`supportsCategories`) kargoyu içeriyor mu?
+3. **Ana Depo Stok Rezervi:** Sevk edilecek ürün ana depoda fiziksel olarak mevcut mu (`inventoryService.hasEnoughAvailable`)?
+4. **Hacim ve Ağırlık Kapasitesi:** Kargo hacmi ve ağırlığı aracın kalan boş alanına sığıyor mu?
+5. **Rota Sapma Toleransı:** Yeni durağın eklenmesi %35 sapma kuralını aşıyor mu?
+6. **TSP Rota Sıralaması:** En düşük mesafeli durak permütasyonu çıkarılır.
+7. **Best-Fit ve Bekleme Skoru Sıralaması:** En düşük `selectionCost` değerine sahip araç görevi üstlenir.
+
+---
+
+### 7. Finansal Maliyet ve Kârlılık Metrikleri
+
+* **Yakıt Maliyeti:** $\text{totalRoundTripDistance} \times \text{costPerKm}$
+* **Gişe Maliyeti:** $\sum \text{tollCost} \times (1.35 \text{ if HEAVY else } 1.0)$
+* **İşçilik ve Elleçleme Maliyeti:** Durak başına elleçleme süresi (`LABOR_RATE_PER_TICK = 0.55`) + zaman maliyeti (`TIME_COST_WEIGHT = 0.35`).
+* **Ceza Maliyetleri:** SLA aşım gecikme cezası (`DELAY_PENALTY_WEIGHT = 0.08`) + depo stoksuzluk cezası (`STOCKOUT_PENALTY_WEIGHT = 2.5`).
+* **Fayda-Maliyet Oranı (BCR / ROI):**
+  $$\text{BCR} = \frac{\text{Toplam Kargo Değeri}}{\text{Toplam Operasyonel Maliyet}}$$
+* **Sürdürülebilirlik (CO2 Tasarrufu):** Elektrikli araçlar 0 g/km salınım yaparken; Dizel araçların 0.8 kg/km baz çizgisiyle ne kadar karbon salınımından tasarruf edildiği net olarak raporlanır.
+
+---
+
+## 🗺️ Coğrafi Ağ ve Filo Topolojisi
+
+### 1. Düğüm ve Altyapı Dağılımı
+Simülasyon, 1000×1000 koordinat düzleminde modellenmiş zengin ve organik bir şehir ağı üzerinde koşar:
+* **1 Ana Lojistik Merkezi (Hub):** `MAIN` (80, 120) — Kuzeybatı sanayi bölgesinde yer alır; tüm ikmal buradan başlar.
+* **5 Mikro Depo:**
+  * `M1` (430, 145) — Kuzey-Merkez Koridoru
+  * `M2` (560, 780) — Güney Bölgesi
+  * `M3` (820, 390) — Doğu Bölgesi
+  * `M4` (140, 620) — Batı Bölgesi
+  * `M5` (490, 460) — Şehir Merkezi
+* **48 Kavşak Düğümü:** `J1` - `J48` (Organik kavşak ağları).
+* **8 Çıkmaz Sokak / T-Kavşak:** `D1` - `D8` (Hızlı bağlantı ve dönüş düğümleri).
+* **16 Müşteri Talep Noktası:** `C1` - `C16` (Kavşaklara bağlı dinamik tüketim noktaları).
+* **Yol Ağı:** 140'tan fazla çift yönlü kenar (`Edge`).
+
+### 2. Ücretli Yollar, Köprüler ve Tüneller (Toll Passages)
+Dijkstra rotalamasını doğrudan etkileyen ve otoyol/köprü geçiş maliyeti üreten 6 stratejik geçiş noktası:
+
+| Geçiş Adı | Başlangıç - Bitiş | Mesafe | Baz Gişe Ücreti | Ağır Vasıta Ücreti ($\times 1.35$) | Açıklama |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Kuzey Otoyolu** | `MAIN` ↔ `J5` | 3.0 km | 60.00 ₺ | 81.00 ₺ | Ana depodan kuzey mikro deposuna hızlı transit |
+| **Doğu Çevre Yolu** | `J14` ↔ `J20` | 3.2 km | 85.00 ₺ | 114.75 ₺ | Doğu koridorunu şehre bağlayan ekspres otoyol |
+| **Boğaz Köprüsü** | `J18` ↔ `J22` | 2.8 km | 145.00 ₺ | 195.75 ₺ | Doğu-Merkez aksını bağlayan stratejik köprü |
+| **Güney Ekspres** | `J28` ↔ `J45` | 2.0 km | 55.00 ₺ | 74.25 ₺ | Güney koridoru kestirme bağlantısı |
+| **Batı Otoyolu** | `J38` ↔ `J36` | 1.5 km | 25.00 ₺ | 33.75 ₺ | Batı bölgesi hızlı erişim arteri |
+| **Merkez Tüneli** | `J12` ↔ `J16` | 1.8 km | 45.00 ₺ | 60.75 ₺ | Şehir merkezini transit geçen yeraltı tüneli |
+
+### 3. Heterojen Filo Özellikleri (Kodda Tanımlı 7 Araç)
+
+| Araç Kodu | Tip & Rol | Kapasite | Yakıt Türü | Birim Maliyet | Desteklenen Kategoriler | Donanım Yetenekleri |
+| :--- | :--- | :---: | :---: | :---: | :--- | :--- |
+| `EXPRESS-MASTER` | Hızlı Dağıtım | 50.0 m³ | Benzin | 7.80 ₺/km | Medikal, Elektronik, Gıda | Standart Kutu, Medikal Kilit, Soğutmalı Kasa |
+| `ECO-TRANSIT` | Hafif Ticari / Eko | 35.0 m³ | Elektrikli | 2.40 ₺/km | Gıda, Genel, Temizlik, Elektronik | Standart Kutu, Kırılabilir Raf |
+| `HEAVY-CARRIER` | Ağır Tır | 85.0 m³ | Dizel | 8.55 ₺/km | Gıda, Temizlik, Genel, Medikal | Standart Kutu, Derin Dondurucu, Soğutmalı Kasa |
+| `CITY-RUNNER` | Şehir İçi Dağıtım | 45.0 m³ | Benzin | 7.20 ₺/km | Elektronik, Genel, Gıda | Standart Kutu, Kırılabilir Raf |
+| `STANDARD-HAULER`| Kamyon / Denge | 60.0 m³ | Dizel | 5.85 ₺/km | Gıda, Temizlik, Medikal, Genel | Standart Kutu, Soğutmalı Kasa |
+| `FLEX-DELIVERY` | Çok Yönlü Kamyonet | 50.0 m³ | Benzin | 6.60 ₺/km | Medikal, Elektronik, Genel | Standart Kutu, Medikal Kilit, Kırılabilir Raf |
+| `SQUARE-MANUAL-1`| Özel Manuel İkmal | 100.0 m³ | Elektrikli | 4.50 ₺/km | Tüm Kategoriler | Tüm Yetenekler (Yalnızca Operatör Onayı) |
+
+---
+
+## 📦 Ürün Kataloğu ve Kargo Kategorileri
+
+Projede tanımlı 10 farklı ürün türü, fiziksel hacim, ağırlık, piyasa değeri ve taşıma gereksinimleriyle modellenmiştir:
+
+| Kod | Ürün Adı | Kategori | Birim Hacim | Birim Ağırlık | Finansal Değer | Gerekli Yetenekler (Capability) |
+| :---: | :--- | :---: | :---: | :---: | :---: | :--- |
+| `P1` | Su Paketi | Gıda | 0.2 m³ | 3.0 kg | 25.00 ₺ | Standart Kutu (`STANDARD`) |
+| `P2` | Dondurulmuş Gıda | Gıda | 1.0 m³ | 1.2 kg | 75.00 ₺ | Derin Dondurucu (`DEEP_FREEZE`), Soğutmalı Kasa (`COOLED_BOX`) |
+| `P3` | Temizlik Seti | Temizlik | 0.8 m³ | 2.4 kg | 45.00 ₺ | Standart Kutu (`STANDARD`) |
+| `P4` | İlaç Kutusu | Medikal | 0.1 m³ | 0.8 kg | 950.00 ₺ | Medikal Kilit (`MEDICAL_LOCK`), Soğutmalı Kasa (`COOLED_BOX`) |
+| `P5` | Tablet Kutu | Elektronik | 0.3 m³ | 0.5 kg | 550.00 ₺ | Kırılabilir Raf (`FRAGILE_RACK`) |
+| `P6` | Powerbank | Elektronik | 0.2 m³ | 0.4 kg | 85.00 ₺ | Standart Kutu (`STANDARD`) |
+| `P7` | Bebek Maması | Gıda | 0.5 m³ | 0.9 kg | 60.00 ₺ | Soğutmalı Kasa (`COOLED_BOX`) |
+| `P8` | Hijyen Paketi | Medikal | 0.6 m³ | 1.0 kg | 55.00 ₺ | Medikal Kilit (`MEDICAL_LOCK`) |
+| `P9` | Ofis Kutusu | Genel | 0.4 m³ | 1.4 kg | 75.00 ₺ | Standart Kutu (`STANDARD`) |
+| `P10`| Cam Ev Aleti | Genel | 1.5 m³ | 4.2 kg | 180.00 ₺ | Kırılabilir Raf (`FRAGILE_RACK`) |
+
+---
+
+## 🔌 Kapsamlı REST API Referansı
+
+Backend servisi (`http://localhost:8080`) aşağıdaki modüler uç noktaları sunmaktadır:
+
+### 1. Simülasyon Yönetimi (`/api/simulation`)
+* `POST /api/simulation/start` — Simülasyonu asenkron başlatır.
+* `POST /api/simulation/stop` — Simülasyonu duraklatır.
+* `POST /api/simulation/reset` — Motoru sıfırlar.
+* `POST /api/simulation/restart` — Sıfırlayıp anında baştan başlatır.
+* `POST /api/simulation/advance?ticks=60` — Zamanı belirtilen tick kadar deterministik adım ilerletir.
+* `GET /api/simulation/status` — Faz, mevcut tick, aktif araçlar ve hata durumunu döner.
+* `GET /api/simulation/summary` — Toplam maliyet, sefer sayıları, CO2 kazanımı ve çoklu durak tasarruf dökümünü döner.
+* `GET /api/simulation/kpis` — Sipariş tamamlanma, kat edilen mesafe, filo doluluğu ve depo stok özetini döner.
+* `GET /api/simulation/timeline?limit=60` — Simülasyonda gerçekleşen olay akışını döner.
+* `GET /api/simulation/vehicle-assignments` — Araçlara atanan güncel sefer planlarını listeler.
+* `GET /api/simulation/dispatch-readiness` — Araçların sevk hazırlığı, doluluk ve onay gereksinim durumunu döner.
+* `POST /api/simulation/approve-dispatch?vehicleId={id}` — Onay bekleyen aracı yola çıkarır (`Human-in-the-Loop`).
+* `POST /api/simulation/dispatch-ready?vehicleId={id}` — Hazır durumdaki aracın kalkışını onaylar.
+
+### 2. Envanter Yönetimi (`/api/inventory`)
+* `GET /api/inventory` — Tüm depoların (veya `?depotId=M1` ile filtrelenen) anlık stok kayıtlarını listeler.
+* `POST /api/inventory` — Belirli bir depoda doğrudan stok seviyesi günceller.
+* `POST /api/inventory/replenish` — Simülasyon döngüsüne manuel ikmal görevi ekler.
+* `POST /api/inventory/consume` — Belirli bir mikro depoda stok düşüşü simüle eder (otonom ikmali sahada test eder).
+
+### 3. İkmal Talepleri (`/api/replenishments`)
+* `GET /api/replenishments` — Tüm ikmal taleplerini ve durumlarını listeler.
+* `GET /api/replenishments/by-vehicle` — Araçlara atanmış ikmal taleplerini gruplanmış olarak döner.
+* `POST /api/replenishments` — Operatör eliyle çoklu ürün içeren yeni ikmal talebi fırlatır.
+
+### 4. Şehir Grafı ve Trafik (`/api/graph`)
+* `GET /api/graph/nodes` — Tüm düğümleri (Depolar, Kavşaklar, Müşteriler) ve koordinatlarını listeler.
+* `GET /api/graph/edges` — Tüm kenarları, mesafeleri ve gişe ücretlerini döner.
+* `GET /api/graph/traffic` — Anlık 24 saatlik trafik yoğunluk katsayılarını döner.
+* `PUT /api/graph/traffic` — Belirli bir yolun trafik katsayısını günceller.
+* `PUT /api/graph/tolls` — Otoyol/köprü gişe geçiş ücretini günceller.
+
+### 5. Filo ve Sefer Raporları (`/api/vehicles` & `/api/vehicle-reports`)
+* `GET /api/vehicles` — Filodaki tüm araçların canlı telemetrisini ve durumlarını döner.
+* `GET /api/vehicles/{vehicleId}` — Tekil aracın detay bilgilerini ve kapasite durumunu döner.
+* `GET /api/vehicle-reports` — Filo genelinin periyodik (günlük/haftalık) mesafe, maliyet ve doluluk raporunu döner.
+* `GET /api/vehicle-reports/{vehicleId}?period=daily` — Belirli bir aracın detaylı sefer performans dökümünü listeler.
+
+### 6. Ürün Kataloğu ve Siparişler (`/api/products` & `/api/orders`)
+* `GET /api/products` — Sistemde kayıtlı 10 ürünün hacim, ağırlık, fiyat ve yetenek isterlerini listeler.
+* `POST /api/products` — Sisteme yeni bir ürün tipi ve taşıma isterleri tanımlar.
+* `GET /api/orders` — Müşterilerden gelen dinamik siparişleri ve durumlarını listeler.
+
+---
+
+## 🖥️ Frontend Arayüz Modülleri
+
+Kullanıcı arayüzü, 4 uzmanlaşmış reaktif ekrandan oluşmaktadır:
+
+1. **Genel Bakış (`OverviewScreen`):**
+   * Üst Yönetim Çubuğu: Başlat, Duraklat, Sıfırla, Yeniden Başlat ve Hızlı Adım (+10 / +60 Tick).
+   * KPI Göstergeleri: Toplam Sipariş, Zamanında Teslimat, Filo Verimliliği, Kat Edilen Toplam Mesafe.
+   * Finansal Maliyet Grafikleri: Yakıt, Gişe Geçişleri, İşçilik ve Gecikme Cezalarının dağılımı.
+   * Tekil vs. Çoklu Durak Tasarruf Analizi: Çoklu durak rotalamasının sağladığı net tasarruf yüzdesi.
+   * Canlı Simülasyon Olay Günlüğü: Sistemde gerçekleşen sevk, teslimat ve ikmal olaylarının anlık akışı.
+
+2. **Canlı Harita (`MapScreen` & `MapCanvas`):**
+   * **Custom SVG Canvas:** Harici harita kütüphanesine ihtiyaç duymadan vektörel koordinat çizimi.
+   * **Segment-Based LERP Motoru:** Araçların yol üzerindeki hareketlerini iki tick arasında pürüzsüz enterpolasyonla akıtan fizik motoru.
+   * **Canlı Trafik Isı Haritası (`TrafficHeatMap`):** Yeşil, sarı ve kırmızı renk tonlarıyla yoğunluk; otoyol/köprü gişe etiketleri.
+   * **İnteraktif Araç ve Düğüm Tooltip'leri:** Araç üzerine gelindiğinde kalan mesafe, anlık yük, varış süresi ve kargo detayları.
+
+3. **Operasyonlar (`OperationsScreen` & `ManuelControlPanel`):**
+   * Mikro Depo Stok ve Dinamik Baseline Takibi: Ürün bazlı mevcut stok, yoldaki stok ve hedef eşik çubukları.
+   * Anlık Stok Tüketim Test Paneli: Operatörün depodan manuel ürün tüketerek $(s, S)$ ikmal algoritmasını sahada sınayabilmesi.
+   * **Human-in-the-Loop Onay Paneli:** 5 saatlik tolerans sonrası mesai sonunda ortaya çıkan operatör onay butonları.
+   * **Finansal Zarar Uyarısı (Deadlock Sübabı):** %5 gibi kritik düşük yüklerde zararına sevki operatörün onayına sunan güvenli tahliye mekanizması.
+
+4. **Canlı İzleme & Filo (`FleetScreen`):**
+   * 7 Aracın Anlık Telemetrisi: `IDLE`, `LOADING`, `IN_TRANSIT`, `DELIVERING`, `WAITING_FOR_APPROVAL` durum kartları.
+   * Canlı Doluluk Çubukları ve Kargo Listesi: Araç içindeki her bir ürünün kategorisi ve yetenek rozetleri.
+   * Geçmiş Sefer Kayıtları Tablosu: Sefer süresi, gidilen km, ödenen gişe tutarı, harcanan yakıt ve sağlanan CO2 tasarrufu dökümü.
+
+---
+
+## 🧪 Test Güvenilirliği ve Doğrulama Matrisi
+
+Sistem, Test Güdümlü Geliştirme (TDD) metodolojisiyle inşa edilmiş ve regresyonsuz mimari yaklaşımıyla doğrulanmıştır:
+
 ```bash
-git clone <repository-url>
+mvn test
+```
+
+```
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.tezprojesi.simulation.SimulationEngineTest
+[INFO] Tests run: 19, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.tezprojesi.simulation.DynamicBaselineInventoryTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.tezprojesi.api.controller.SimulationControllerTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.tezprojesi.routing.RoutingServiceTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.tezprojesi.dispatch.DispatchServiceTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.tezprojesi.api.controller.MetricsControllerTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.tezprojesi.simulation.InventoryServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.tezprojesi.simulation.VehicleMovementServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.tezprojesi.api.controller.ReplenishmentControllerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.tezprojesi.api.controller.VehicleControllerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] Results:
+[INFO] Tests run: 55, Failures: 0, Errors: 0, Skipped: 0
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+```
+
+### Öne Çıkan Birim Test Kapsamı:
+* **Best-Fit vs Greedy Seçimi:** 8 m³ küçük kargoda liste başındaki 85 m³ tır yerine küçük aracın seçildiğinin ve tırın rehin kalmadığının kanıtı (`simulationEngine_bestFitSelection_prefersSmallerVehicleOverHeavyTruckForSmallCargo`).
+* **Aging Discount Cap:** Uzun süre (100+ tick) depoda bekleyen tırın indirim tavanının 10.0 puanı aşamayacağı ve Best-Fit küçük aracın önüne geçemeyeceğinin testi (`simulationEngine_agingDiscountIsCapped_longIdleTruckDoesNotBeatBetterFittingVan`).
+* **Anti-Starvation Koridor Dağıtımı:** İki boş aracın aynı depoya yığılmayıp Doğu ve Batı koridorlarını paralel sahiplendiğinin testi (`simulationEngine_antiStarvation_parallelVehiclesClaimDifferentCorridors`).
+* **5 Saat Grace Period & Kademeli Onay:** 1. ve 200. tick'te onay butonunun açılmadığı; 480. tick'te Aging $\ge 600$ ile operatör onayının tetiklendiğinin doğrulanması.
+* **%5 Doluluk Deadlock Koruması:** Düşük yükte 5 saat sonra Finansal Zarar Uyarısı ile Force Dispatch onayı üretilmesi (`simulationEngine_criticalLowLoad_triggersFinancialWarningAndForceDispatch`).
+* **Dinamik Baseline:** Tüketim azaldığında veya arttığında 100-tick hareketli ortalamanın hedef stok seviyesini hatasız ayarlaması.
+
+### Frontend Kalite Kontrolü:
+* `npm run lint` (`eslint src`): **0 hata, 0 uyarı.**
+* `npm run build` (`vite build`): **0 hata, manual chunking optimizasyonlu üretim paketi.**
+
+---
+
+## 🔬 Bilinen Sınırlar, Varsayımlar ve Hata Bildirimi
+
+Bu proje, akademik bir lisans tezi ve deterministik bir simülatör olarak geliştirilmiştir. Sistem **55 birim ve entegrasyon testiyle %100 doğrulanmış** olmasına rağmen, kentsel lojistiğin dinamik doğası gereği aşağıdaki varsayımlar ve geliştirilmeye açık sınırlar göz önünde bulundurulmalıdır:
+
+1. **Uç Durumlar (Edge Cases):** Tüm mikro depoların aynı anda sıfır stoğa düştüğü ve filodaki tüm araçların seferde olduğu aşırı yoğunluk senaryolarında, araç dönüş sıralaması deterministik olarak FIFO mantığında yürütülür.
+2. **Hava Durumu ve Kaza Faktörü:** Trafik yoğunlukları 24 saatlik Rush-Hour eğrisine göre dalgalanmaktadır; anlık hava muhalefeti veya yol kapanması gibi rastlantısal olaylar deterministik çekirdeğin haricinde tutulmuştur.
+3. **Geri Bildirim ve Katkı:** Kod tabanında gözden kaçmış olabilecek davranış farklılıkları, beklenmedik konsolidasyon kilitlenmeleri veya algoritma iyileştirme önerileri için geri bildirimler memnuniyetle karşılanmaktadır. Karşılaşılan durumlar için **GitHub Issues** üzerinden hata bildirimi oluşturabilirsiniz.
+
+---
+
+## 💻 Teknoloji Yığını
+
+| Katman | Teknoloji | Versiyon | Mimari Rolü ve Seçim Nedeni |
+| :--- | :--- | :---: | :--- |
+| **Backend** | Java | 17 (LTS) | Güçlü tip güvenliği, pattern matching ve optimize JVM performansı. |
+| **Framework** | Spring Boot | 3.1.5 | Kurumsal REST API mimarisi, Dependency Injection ve IoC konteyneri. |
+| **Eşzamanlılık** | Java Concurrency | `java.util.concurrent` | `ReentrantLock` ile API ve simülasyon döngüsü arasında Human-in-the-Loop senkronizasyonu. |
+| **Frontend** | React | 19.2 | Reaktif bileşen mimarisi, hooks tabanlı durum yönetimi. |
+| **Build Aracı** | Vite | 7.3 | Hızlı geliştirme ortamı (HMR) ve optimize Rollup paketleme. |
+| **Stil / Arayüz** | Tailwind CSS & Flowbite | v4 | Modern koyu mod (dark mode) tasarımı, responsive arayüz bileşenleri. |
+| **Grafik / Çizim**| Custom SVG Canvas | HTML5 / SVG | Dış harita bağımlılığı olmaksızın matematiksel koordinat ve LERP animasyonu. |
+| **Görselleştirme**| Recharts & Lucide | Güncel | Finansal dağılım grafikleri ve modern lojistik ikon seti. |
+| **Haberleşme** | HTTP Short Polling | 1000 ms | Simülasyonun deterministik adımlarıyla tam senkronize veri akışı. |
+
+---
+
+## 🚀 Kurulum ve Çalıştırma
+
+### Sistem Gereksinimleri
+* **JDK:** Java 17 veya üzeri
+* **Build Tool:** Apache Maven 3.8+
+* **Node.js:** Node.js 18+ ve npm 9+
+
+### 1. Depoyu Klonlayın
+```bash
+git clone https://github.com/kullanici-adiniz/tezprojesi-project.git
 cd tezprojesi-project
 ```
 
-#### 2. Backend Setup
-
+### 2. Backend Servisini Başlatın
 ```bash
-# Build the backend with Maven
-mvn clean install
-
-# The build will:
-# - Compile Java source files
-# - Run unit tests
-# - Package as executable JAR
+mvn clean spring-boot:run
 ```
+*Backend servisi `http://localhost:8080` adresinde kullanıma hazır olacaktır.*  
+*(Tüm testleri koşturmak için: `mvn test`)*
 
-#### 3. Frontend Setup
-
+### 3. Frontend Arayüzünü Başlatın
+Ayrı bir terminal penceresinde:
 ```bash
-# Install frontend dependencies
 cd frontend
 npm install
-
-# For development with hot reload
 npm run dev
-
-# For production build
-npm run build
-
-# Run ESLint to check code quality
-npm run lint
 ```
+*Web arayüzü `http://localhost:5173` adresinde açılacaktır.*
 
-#### 4. Start the Application
-
-**Terminal 1 - Backend:**
-```bash
-# Start Spring Boot application on port 8080
-mvn spring-boot:run
-
-# Alternative: Run the built JAR directly
-java -jar target/tezprojesi-project-0.0.1-SNAPSHOT.jar
-```
-
-**Terminal 2 - Frontend (Development):**
-```bash
-cd frontend
-npm run dev
-# Opens at http://localhost:5173
-```
-
-#### 5. Access the Application
-
-- **Frontend Dashboard**: http://localhost:5173
-- **REST API**: http://localhost:8080/api
-- **Swagger UI (API Docs)**: http://localhost:8080/swagger-ui.html
-- **Health Check**: http://localhost:8080/actuator/health
+### 4. Simülasyonu İnceleme ve Yürütme Adımları
+1. Tarayıcınızdan `http://localhost:5173` adresine bağlanın.
+2. Sağ üstteki **"Başlat"** veya **"Adım İlerlet (+10 Tick)"** butonlarına tıklayarak simülasyon motorunu çalıştırın.
+3. **Canlı Harita** ekranında araçların düğümler arasındaki LERP hareketlerini, canlı trafik yoğunluğunu ve köprü/gişe geçişlerini gözlemleyin.
+4. **Operasyonlar** ekranından mikro depolarda stok tüketimi tetikleyerek dinamik $(s, S)$ ikmal zincirini ve konsolidasyon planlarını test edin.
+5. Düşük doluluklu araçlarda 5 saatlik grace period sonrasında beliren **Human-in-the-Loop** onay butonunu deneyimleyin.
+6. **Canlı İzleme & Filo** ekranından 7 aracın sefer geçmişini, kat ettiği mesafeyi, yakıt/gişe harcamalarını ve net CO2 tasarrufunu inceleyin.
 
 ---
 
-## 📡 API Reference
+## 📄 Lisans
 
-### Core Endpoints
-
-#### **Simulation Control**
-
-```http
-POST /api/simulation/start
-```
-Start the simulation engine asynchronously.
-
-**Response:**
-```json
-202 Accepted
-```
-
----
-
-```http
-POST /api/simulation/stop
-```
-Stop the running simulation.
-
-**Response:**
-```json
-200 OK
-```
-
----
-
-```http
-POST /api/simulation/reset
-```
-Reset simulation to initial state (only when stopped).
-
-**Response:**
-```json
-200 OK
-```
-
----
-
-```http
-POST /api/simulation/restart
-```
-Reset and restart the simulation immediately.
-
-**Response:**
-```json
-202 Accepted
-```
-
----
-
-```http
-POST /api/simulation/advance
-?ticks=60
-```
-Manually advance simulation by specified tick count (default: 60 minutes).
-
-**Parameters:**
-- `ticks` (optional, int): Number of minutes to advance
-
-**Response:**
-```json
-200 OK
-```
-
----
-
-```http
-GET /api/simulation/status
-```
-Get current simulation status and progress.
-
-**Response:**
-```json
-{
-  "running": false,
-  "phase": "PAUSED",
-  "currentTick": 1440,
-  "maxTicks": 10080,
-  "pendingOrders": 42,
-  "activeVehicles": 3,
-  "reorderPointFraction": 0.5,
-  "errorMessage": null,
-  "failureTick": null
-}
-```
-
----
-
-#### **Dispatch Management**
-
-```http
-GET /api/simulation/vehicle-assignments
-```
-Retrieve all current vehicle assignments.
-
-**Response:**
-```json
-[
-  {
-    "vehicleId": "V001",
-    "currentLocation": "J1",
-    "capacity": 100,
-    "currentLoad": 45,
-    "status": "IN_TRANSIT",
-    "ordersAssigned": ["ORD001", "ORD002"]
-  }
-]
-```
-
----
-
-```http
-GET /api/simulation/dispatch-readiness
-```
-Get vehicles ready for dispatch that require approval.
-
-**Response:**
-```json
-[
-  {
-    "vehicleId": "V002",
-    "depotId": "MAIN",
-    "proposedLoadFraction": 0.65,
-    "estimatedCost": 250.50,
-    "approvalRequired": true
-  }
-]
-```
-
----
-
-```http
-POST /api/simulation/approve-dispatch
-?vehicleId=V002
-```
-Approve dispatch for a waiting vehicle.
-
-**Parameters:**
-- `vehicleId` (required, string): Vehicle identifier
-
-**Response:**
-```json
-200 OK
-```
-
----
-
-#### **Analytics & Metrics**
-
-```http
-GET /api/simulation/kpis
-```
-Get high-level KPIs for the simulation.
-
-**Response:**
-```json
-{
-  "totalOrders": 420,
-  "completedOrders": 385,
-  "totalDistance": 5234.5,
-  "avgDeliveryTime": 1250,
-  "vehicleUtilization": 72.4,
-  "depotStock": {
-    "MAIN": 5000.0,
-    "M1": 1250.0,
-    "M2": 980.0
-  }
-}
-```
-
----
-
-```http
-GET /api/simulation/timeline
-?limit=60
-```
-Get recent simulation events timeline.
-
-**Parameters:**
-- `limit` (optional, int): Number of events to retrieve (default: 60)
-
-**Response:**
-```json
-[
-  {
-    "id": "EVT_001",
-    "tick": 1440,
-    "timeLabel": "01.01 00:00",
-    "type": "ORDER_CREATED",
-    "title": "New Order Received",
-    "detail": "Order ORD420 created at C5",
-    "entityType": "ORDER",
-    "entityId": "ORD420"
-  }
-]
-```
-
----
-
-```http
-GET /api/simulation/summary
-```
-Get comprehensive simulation summary with cost breakdown and sustainability metrics.
-
-**Response:**
-```json
-{
-  "totalTrips": 156,
-  "totalCost": 18234.50,
-  "totalOperationTicks": 42000,
-  "vehicleUtilizationPercentage": 78.5,
-  "averageDeliveryTicks": 1200,
-  "totalFuelCost": 4500.0,
-  "totalTollCost": 1200.0,
-  "totalLaborCost": 8500.0,
-  "totalPenaltyCost": 340.0,
-  "totalCargoValue": 45000.0,
-  "co2Emissions": 2340.5,
-  "co2Saved": 1200.0,
-  "multiStopTrips": 98,
-  "singleStopTrips": 58,
-  "multiStopAverageCost": 105.5,
-  "singleStopAverageCost": 145.0,
-  "totalSavings": 6200.0,
-  "comparisonSummary": "Multi-stop plans produced average 27.3% lower cost."
-}
-```
-
----
-
-#### **Graph & Routing**
-
-```http
-GET /api/graph/nodes
-```
-Retrieve all nodes in the city graph.
-
-**Response:**
-```json
-[
-  {
-    "id": "MAIN",
-    "type": "MAIN_DEPOT",
-    "x": 80,
-    "y": 180
-  }
-]
-```
-
----
-
-```http
-GET /api/graph/route
-?sourceNodeId=MAIN&targetNodeId=C1&tollPenalty=1.0
-```
-Compute shortest route between two nodes.
-
-**Parameters:**
-- `sourceNodeId` (required): Starting node ID
-- `targetNodeId` (required): Destination node ID
-- `tollPenalty` (optional): Weight for toll costs (default: 1.0)
-
-**Response:**
-```json
-{
-  "sourceNodeId": "MAIN",
-  "targetNodeId": "C1",
-  "nodeIds": ["MAIN", "J1", "C1"],
-  "totalCost": 125.5,
-  "totalDistanceKm": 25.3,
-  "tollPenalty": 1.0
-}
-```
-
----
-
-```http
-PUT /api/graph/edges/traffic
-```
-Update traffic conditions on an edge.
-
-**Request:**
-```json
-{
-  "fromNodeId": "J1",
-  "toNodeId": "J2",
-  "trafficFactor": 1.5,
-  "bidirectional": true,
-  "locked": false
-}
-```
-
-**Response:**
-```json
-200 OK
-```
-
----
-
-#### **Orders**
-
-```http
-GET /api/orders
-```
-List all orders in the system.
-
-**Response:**
-```json
-[
-  {
-    "id": "ORD001",
-    "status": "COMPLETED",
-    "customerNodeId": "C1",
-    "demandVolume": 2.5,
-    "priority": 1,
-    "assignedVehicleId": "V001"
-  }
-]
-```
-
----
-
-### Complete API Documentation
-
-Visit the **Swagger UI** for interactive API documentation:
-```
-http://localhost:8080/swagger-ui.html
-```
-
----
-
-## ⚙️ Configuration
-
-### Backend Configuration (`src/main/resources/application.yml`)
-
-```yaml
-server:
-  port: 8080
-
-spring:
-  application:
-    name: tezprojesi-project
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics
-
-simulation:
-  # Simulation Parameters
-  maxTicks: 10080              # Total simulation time (1 week in minutes)
-  tickDurationMinutes: 1       # Real time per tick
-  liveTickDelayMs: 1000        # Delay for live mode (ms)
-  
-  # Order Generation
-  orderRate: 0.08              # Orders per tick
-  minOrderVolume: 1.0          # Minimum order size (units)
-  maxOrderVolume: 5.0          # Maximum order size (units)
-  
-  # Traffic Simulation
-  minTrafficFactor: 0.9        # Minimum traffic multiplier
-  maxTrafficFactor: 1.3        # Maximum traffic multiplier
-  
-  # Depot Operations
-  minMainDepartureLoadFraction: 0.5      # Min load % for dispatch
-  maxMainWaitHours: 3.0                  # Max wait time at main depot
-  reorderPointFraction: 0.50             # (s,S) policy threshold
-  
-  # Dispatch Policy
-  autostart: false             # Auto-start on boot
-  dispatchApprovalRequired: true  # Require manual approval
-```
-
-### Frontend Configuration (Vite)
-
-Edit `frontend/vite.config.js`:
-```javascript
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      }
-    }
-  }
-})
-```
-
----
-
-## 👨‍💻 Development
-
-### Project Statistics
-- **Backend Lines of Code**: ~15,000+
-- **Frontend Lines of Code**: ~3,500+
-- **Total Test Coverage**: 45%+ with 100+ test cases
-- **API Endpoints**: 20+ REST endpoints
-- **Database Tables**: 8+ domain entities
-
-### Code Quality Standards
-- **Build Tool**: Maven with Maven Compiler Plugin
-- **Code Style**: Google Java Style Guide
-- **Linting**: ESLint with React plugin
-- **Testing**: JUnit 5 + Mockito for backend, Vitest ready for frontend
-- **CI/CD Ready**: Configured for GitHub Actions / Azure Pipelines
-
-### Running Tests
-
-**Backend Tests:**
-```bash
-# Run all tests
-mvn test
-
-# Run with coverage report
-mvn test jacoco:report
-
-# Run specific test class
-mvn test -Dtest=DispatchServiceTest
-```
-
-**Frontend Tests:**
-```bash
-# Coming soon - test infrastructure ready
-npm test
-```
-
-### Development Workflow
-
-1. **Create Feature Branch**
-   ```bash
-   git checkout -b feature/new-optimization-algorithm
-   ```
-
-2. **Make Changes & Commit**
-   ```bash
-   git add .
-   git commit -m "feat: Add AI-based depot selection"
-   ```
-
-3. **Push & Create PR**
-   ```bash
-   git push origin feature/new-optimization-algorithm
-   ```
-
-4. **Code Review** & Merge after approval
-
----
-
-## 📚 Documentation
-
-### Internal Documentation
-- [Final Thesis Report](./finalraporu.md) - Comprehensive technical documentation (Turkish)
-- [Control Documentation](./kontrol.md) - System control & validation procedures
-
-### API Documentation
-- Swagger/OpenAPI UI: `http://localhost:8080/swagger-ui.html`
-- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
-
-### Architecture Decisions
-- Event-driven architecture for real-time simulation
-- In-memory data storage for high-speed tick processing
-- Tick-based time model for accurate simulation semantics
-- (s,S) inventory policy for automated replenishment
-
----
-
-## 📊 Performance Metrics
-
-### System Performance
-
-| Metric | Value | Notes |
-|--------|-------|-------|
-| **Max Simulation Speed** | 10,080 ticks/simulation | 1 week of virtual time |
-| **Tick Processing Time** | ~50-200ms | Depends on order volume |
-| **API Response Time** | <100ms | Average for GET requests |
-| **Frontend Render Time** | <50ms | React with Vite |
-| **In-Memory Data Size** | <500MB | Typical simulation state |
-| **Vehicle Tracking Accuracy** | ±1 coordinate unit | Real-time position updates |
-
-### Optimization Features
-
-- **Dispatch Decision Time**: < 5ms per order
-- **Route Computation**: O(n log n) using Dijkstra's algorithm
-- **Vehicle Utilization Calculation**: O(n) aggregation
-- **Multi-Stop Trip Optimization**: Achieves 27.3% cost reduction vs single-stop
-
----
-
-## 🤝 Contributing
-
-### How to Contribute
-
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
-
-### Development Guidelines
-
-- Follow Google Java Style Guide for backend code
-- Use TypeScript/JSX for frontend development
-- Maintain 45%+ test coverage
-- Document complex algorithms with comments
-- Update this README for significant changes
-
-### Reporting Issues
-
-Use GitHub Issues to report bugs. Include:
-- Clear description
-- Steps to reproduce
-- Expected vs actual behavior
-- System information
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** - see the LICENSE file for details.
-
----
-
-## 👥 Authors & Contributors
-
-**Project Development:**
-- Lead Architecture & Backend Development
-- Frontend Implementation & UI/UX
-- Simulation Engine & Optimization Algorithms
-- Testing & Documentation
-
-**Research Basis:**
-- Thesis Research on Multi-Depot Distribution Networks
-- Last-Mile Delivery Optimization Techniques
-- Dynamic Inventory Management (s,S) Policies
-- Real-Time Vehicle Routing Problems
-
----
-
-## 🙏 Acknowledgments
-
-- Spring Boot Community & Documentation
-- React Community & Ecosystem
-- Tailwind CSS & Flowbite Component Library
-- Academic Research on Logistics Optimization
-
----
-
-## 📞 Support & Contact
-
-For questions, issues, or suggestions:
-
-- **Issues Tracker**: GitHub Issues
-- **Discussions**: GitHub Discussions
-- **Documentation**: See internal docs and comments
-
----
-
-<div align="center">
-
-### 🎓 Built as a Final Project
-
-**Logistics Decision Support System**
-
-*An advanced simulation platform for optimizing complex multi-depot distribution networks*
-
----
-
-Made with ❤️ by the Development Team
-
-</div>
+Bu proje [MIT Lisansı](LICENSE) kapsamında lisanslanmıştır. Bilimsel araştırma, akademik tez çalışmaları ve eğitim amaçlı kullanımlar için serbestçe incelenebilir, test edilebilir ve geliştirilebilir.

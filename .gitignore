@@ -4,6 +4,9 @@ target/
 
 .idea/
 .vscode/
+.vs/
+.sixth/
+.check-compile/
 
 frontend/node_modules/
 frontend/dist/
@@ -11,3 +14,15 @@ frontend/dist-ssr/
 
 .DS_Store
 Thumbs.db
+
+# Yerel analiz, rapor ve not dosyalari (Yalnizca README.md repoda kalacak)
+ALGORITMA_COZUMU.md
+DUZELTME.md
+IMPLEMENTASYON_PLANI.md
+TEZ_SAVUNMASI_BULGU_RAPORU.md
+finalraporu.md
+kontrol.md
+LINKEDIN_PAYLAS.txt
+scan_results.txt
+DistanceCalculator.java
+

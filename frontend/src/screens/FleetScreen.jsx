@@ -1,9 +1,7 @@
-import { useState, useMemo, memo } from 'react'
+import { useMemo, memo } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { tooltipStyle } from '../components/chartTheme'
 import { ActionButton, Card, ChartCard, DataTable, Input, ProgressBar, SectionLabel, Select, StatusBadge } from '../components/ui'
-
-const periodOptions = ['daily', 'weekly', 'monthly', 'yearly']
 
 const tooltipSt = {
   ...tooltipStyle,
@@ -102,7 +100,7 @@ const VehicleCard = memo(function VehicleCard({ vehicle, assignment }) {
   )
 })
 
-export const FleetScreen = memo(function FleetScreen({ api, doAction, nodes, vehicles, vehicleAssignments, reports, reportPeriod, setReportPeriod, summary }) {
+export const FleetScreen = memo(function FleetScreen({ vehicles, vehicleAssignments, reports, summary }) {
   const safeReports = useMemo(() => Array.isArray(reports) ? reports : [], [reports])
   const safeVehicles = useMemo(() => Array.isArray(vehicles) ? vehicles : [], [vehicles])
   const safeAssignments = useMemo(() => Array.isArray(vehicleAssignments) ? vehicleAssignments : [], [vehicleAssignments])

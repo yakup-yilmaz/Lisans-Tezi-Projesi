@@ -74,6 +74,13 @@ public final class SimulationEngine {
   private static final double CRITICAL_ROUTE_DEVIATION_RATIO = 0.50;
   private static final double HEAVY_VEHICLE_CAPACITY_THRESHOLD = 46.0;
   private static final double HEAVY_VEHICLE_TOLL_MULTIPLIER = 1.35;
+  // Best-Fit: idle-capacity penalty per unused m3 of vehicle volume.
+  private static final double WASTE_PENALTY_PER_M3 = 0.25;
+  // Aging discount for vehicles waiting at the main depot. It is capped so it can
+  // break ties between similar vehicles but never outweigh a large capacity gap
+  // (e.g. an 85 m3 truck carrying an 8 m3 load).
+  private static final double AGING_DISCOUNT_PER_TICK = 1.5;
+  private static final double MAX_AGING_DISCOUNT = 10.0;
   /**
    * Bonus when route stays on low-traffic edges (encourages “clean”
    * alternatives).
@@ -791,8 +798,11 @@ public final class SimulationEngine {
       availableVehicles.remove(bestAction.vehicle());
     }
 
+    Set<String> claimedRequestIds = new HashSet<>();
     for (Vehicle vehicle : availableVehicles) {
-      List<ReplenishmentRequest> pending = pendingRequestsForPlanning();
+      List<ReplenishmentRequest> pending = pendingRequestsForPlanning().stream()
+          .filter(r -> !claimedRequestIds.contains(r.getId()))
+          .toList();
       if (pending.isEmpty()) {
         dispatchReadinessByVehicle.remove(vehicle.getId());
         continue;
@@ -802,6 +812,10 @@ public final class SimulationEngine {
         dispatchReadinessByVehicle.remove(vehicle.getId());
         continue;
       }
+      // Record requests claimed by this vehicle so subsequent idle vehicles can take
+      // other corridors
+      option.plan().requests().forEach(r -> claimedRequestIds.add(r.getId()));
+
       if (!option.readyToDispatch() && !option.awaitingApproval()) {
         annotateDeferredForConsolidation(vehicle, option.plan());
       }
@@ -845,7 +859,9 @@ public final class SimulationEngine {
         .map(vehicle -> evaluateVehiclePlan(vehicle, mainDepot, pending))
         .filter(Objects::nonNull)
         .filter(option -> option.readyToDispatch() || (requireManualDispatchApproval && option.awaitingApproval()))
-        .findFirst() // GREEDY: İlk uygun planı seçer.
+        .min(Comparator
+            .comparing((VehiclePlanOption opt) -> !opt.readyToDispatch())
+            .thenComparingDouble(VehiclePlanOption::selectionCost))
         .orElse(null);
   }
 
@@ -862,13 +878,64 @@ public final class SimulationEngine {
     boolean isManualVehicle = vehicle.isDedicatedManual();
     boolean bypassThreshold = isManualVehicle || containsManualRequest;
 
-    boolean minimumLoadReached = bypassThreshold || projectedLoadFraction >= 0.50;
+    double minDepartureFraction = vehicle.getMinimumDepartureLoadFraction();
+    boolean minimumLoadReached = bypassThreshold || projectedLoadFraction >= minDepartureFraction;
     long maxWaitTicks = vehicle.getMaxWaitTicks();
     boolean maxWaitTimerElapsed = maxWaitTicks > 0L && waitedTicks >= maxWaitTicks;
 
-    // RULE: Below 50% capacity, regular vehicles NEVER dispatch, regardless of wait
-    // time.
-    if (!bypassThreshold && projectedLoadFraction < 0.50) {
+    // --- FAZ 1: Kademeli Toleranslı (Grace-Period) Gecikmeli Aging ve SLA Onay Modeli ---
+    // 1. Doğal Konsolidasyon Penceresi (Grace Period): İlk 300 tick (5 saat) boyunca aging = 0
+    // ve araç konsolidasyon bekler, operatör erken butonlarla meşgul edilmez.
+    long maxRequestWaitTicks = bestPlan.requests().stream()
+        .mapToLong(req -> Math.max(0L, currentTick - req.getCreatedTick()))
+        .max()
+        .orElse(0L);
+
+    long gracePeriodTicks = 300L; // 5 saat doğal konsolidasyon penceresi
+    long overdueTicks = Math.max(0L, maxRequestWaitTicks - gracePeriodTicks);
+    double delayedAgingScore = overdueTicks <= 0L ? 0.0 : Math.min(1000.0, Math.pow(overdueTicks, 2) * 0.02);
+
+    boolean slaTriggered = false;
+    boolean isFinancialWarning = false;
+
+    if (maxWaitTimerElapsed) {
+      slaTriggered = true;
+    } else if (overdueTicks > 0L) {
+      if (projectedLoadFraction >= 0.20 && projectedLoadFraction < minDepartureFraction) {
+        // %20 - %49: Aging >= 600 (~8. saat, mesai/gün sonu)
+        slaTriggered = (delayedAgingScore >= 600.0);
+      } else if (projectedLoadFraction >= 0.10 && projectedLoadFraction < 0.20) {
+        // %10 - %19: Aging >= 800 (~8.3 saat)
+        slaTriggered = (delayedAgingScore >= 800.0);
+      } else if (projectedLoadFraction < 0.10) {
+        // < %10 (Örn: %5): Deadlock Koruması - Aging >= 1000 Cap (~8.7 saat)
+        // Operatör onayı finansal zarar uyarısıyla açılır
+        if (delayedAgingScore >= 1000.0) {
+          slaTriggered = true;
+          isFinancialWarning = true;
+        }
+      }
+    }
+
+    if (isFinancialWarning) {
+      double netLoss = Math.max(0.0, bestPlan.operationalCost() - totalCargoFinancialValue(bestPlan.items()));
+      String warning = String.format(java.util.Locale.US,
+          "⚠️ DİKKAT: Doluluk kritik düşük (%%%.1f). Kargo 5+ saattir konsolide edilemedi. Sevk operasyonel zarar (-%.0f TL) yazacaktir. [Zararina Sevk Et (Force Dispatch)]",
+          projectedLoadFraction * 100.0, netLoss);
+      bestPlan = bestPlan.withDecision(warning, bestPlan.comparisonSummary());
+      eventLogService.record(
+          currentTick,
+          "FINANCIAL_DISPATCH_ALERT",
+          "Kritik dusuk doluluk finansal zararina sevk uyarisi",
+          warning,
+          "VEHICLE",
+          vehicle.getId());
+    }
+
+    // RULE: Below minimum capacity, regular vehicles NEVER dispatch autonomously.
+    // If SLA threshold is reached, escalate for manual approval.
+    if (!bypassThreshold && !minimumLoadReached) {
+      boolean awaitingSlaApproval = requireManualDispatchApproval && slaTriggered;
       return new VehiclePlanOption(
           vehicle,
           bestPlan,
@@ -877,29 +944,22 @@ public final class SimulationEngine {
           false,
           maxWaitTimerElapsed,
           false,
-          false,
-          computeVehicleSelectionCost(vehicle, bestPlan));
+          awaitingSlaApproval,
+          computeVehicleSelectionCost(vehicle, bestPlan, waitedTicks));
     }
 
-    // SENIOR STRATEGY PHASE 1: Global Dispatch Rules Overriding vehicle defaults
-    // RULE A: Below 50% load -> never dispatch (handled above)
-    // RULE B: 50% - 74% load -> dispatch only after 180 ticks (3h)
-    // RULE C: 75% and above -> immediate dispatch
-
-    boolean readyByLoadAndTime = false;
-    if (projectedLoadFraction >= 0.75) {
+    boolean readyByLoadAndTime;
+    if (projectedLoadFraction >= 0.75 || maxWaitTicks == 0L || maxWaitTimerElapsed) {
       readyByLoadAndTime = true;
-    } else if (projectedLoadFraction >= 0.50) {
-      readyByLoadAndTime = (waitedTicks >= 180);
+    } else {
+      readyByLoadAndTime = (waitedTicks >= 180L);
     }
 
-    // Manual requests (insan müdahalesi) veya özel manuel araçlar her zaman
-    // önceliklidir ve kuralları bypass edebilir
+    // Manual requests veya ozel manuel araclar her zaman onceliklidir
     boolean readyToDispatch = bypassThreshold || readyByLoadAndTime;
 
-    // Eğer araç hazır değilse ama %50 doluluğa ulaştıysa (manuel onay bekleyebilir
-    // modda ise)
-    boolean awaitingApproval = !readyToDispatch && !bypassThreshold && projectedLoadFraction >= 0.50;
+    // Eger arac otonom cikisa hazir degilse ama minimum doluluga ulastiysa manuel onay bekler
+    boolean awaitingApproval = !readyToDispatch && !bypassThreshold && minimumLoadReached;
 
     return new VehiclePlanOption(
         vehicle,
@@ -910,7 +970,7 @@ public final class SimulationEngine {
         waitedTicks >= 180, // maxWaitReached
         readyToDispatch,
         awaitingApproval,
-        computeVehicleSelectionCost(vehicle, bestPlan));
+        computeVehicleSelectionCost(vehicle, bestPlan, waitedTicks));
   }
 
   private List<ReplenishmentRequest> pendingRequestsForPlanning() {
@@ -925,14 +985,6 @@ public final class SimulationEngine {
     // they are locked pending human action.
     if (vehicle.getStatus() == VehicleStatus.WAITING_FOR_APPROVAL) {
       return false;
-    }
-    // RULE: RETURNING vehicles are eligible so that a plan can be pre-staged for
-    // their arrival.
-    // They must be unloaded (currentLoad == 0) and not already on an active
-    // delivery route.
-    if (vehicle.getStatus() == VehicleStatus.RETURNING) {
-      return vehicle.getCurrentLoad() == 0.0
-          && !vehicleMovementService.hasActiveRoute(vehicle.getId());
     }
     // RULE: Standard eligibility — vehicle must be IDLE, empty, and without an
     // active route.
@@ -1282,12 +1334,13 @@ public final class SimulationEngine {
     final double ALPHA = 0.01;
     for (ReplenishmentRequest req : requests) {
       long waitedTicks = Math.max(0, currentTick - req.getCreatedTick());
-      urgencyScore += Math.pow(waitedTicks, 2) * ALPHA;
+      urgencyScore += Math.min(800.0, Math.pow(waitedTicks, 2) * ALPHA);
       if (isUrgentRequest(req)) urgencyScore += 300.0;
     }
 
+    double wastePenalty = Math.max(0.0, vehicle.getCapacityVolume() - totalVolume) * 0.25;
     double planBenefit = capacityScore + urgencyScore;
-    double netScore = planBenefit; 
+    double netScore = planBenefit - wastePenalty; 
     double score = -netScore;
 
     double routeCost = ROUTE_COST_WEIGHT * (computeRouteCost(route, vehicle) + computeRouteCost(repositionRoute, vehicle));
@@ -1335,7 +1388,7 @@ public final class SimulationEngine {
         totalRoundTripDistance, totalOperationalCost, totalVolume, score,
         loadingTicks, missionTicks, requests.stream().anyMatch(this::isUrgentRequest),
         deliveryDistance, repositionDistance, planBenefit, netScore, routeCost,
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, null, null, routeSummary, cargoSummary);
+        0.0, 0.0, 0.0, 0.0, 0.0, wastePenalty, null, null, routeSummary, cargoSummary);
   }
 
   private long requiredMaskForReplenishment(ReplenishmentRequest request) {
@@ -1391,11 +1444,13 @@ public final class SimulationEngine {
     return routingService.computePathCost(graph, route, routingProfileFor(vehicle));
   }
 
-  private double computeVehicleSelectionCost(Vehicle vehicle, DeliveryPlan plan) {
-    // Logistics rule: vehicle choice is based on total route distance cost + fuel
-    // cost,
-    // not just the nearest idle vehicle.
-    return plan.routeCost();
+  private double computeVehicleSelectionCost(Vehicle vehicle, DeliveryPlan plan, long waitedTicks) {
+    // Logistics rule: best-fit vehicle choice = idle capacity waste penalty minus a
+    // capped waiting-time discount (aging bonus) for long-idle vehicles. Capability
+    // filtering happens earlier (hard filter), so the discount never bypasses it.
+    double wastePenalty = Math.max(0.0, vehicle.getCapacityVolume() - plan.totalVolume()) * WASTE_PENALTY_PER_M3;
+    double agingDiscount = Math.min(MAX_AGING_DISCOUNT, waitedTicks * AGING_DISCOUNT_PER_TICK);
+    return wastePenalty - agingDiscount;
   }
 
   private boolean isWithinMultiStopDeviation(DeliveryPlan basePlan, DeliveryPlan candidatePlan) {
@@ -1452,7 +1507,9 @@ public final class SimulationEngine {
       if (v != null) {
         DeliveryPlan updated = buildPlan(v, mainDepot, plan.requests());
         if (updated != null) {
-          approvalPendingPlansByVehicle.put(vehicleId, updated);
+          DeliveryPlan updatedWithDecision = updated.withDecision(plan.decisionReason(), plan.comparisonSummary());
+          approvalPendingPlansByVehicle.put(vehicleId, updatedWithDecision);
+          reserveDecisionDetails(updatedWithDecision);
         }
       }
     });
@@ -2286,17 +2343,13 @@ public final class SimulationEngine {
   }
 
   private long computeLoadTicks(Vehicle vehicle, double volume) {
-    // RULE: Per user request for thesis demo, minimum loading time is set to 60
-    // ticks (1 hour).
-    long baseTicks = 60L;
-    return baseTicks + (long) Math.ceil(volume / vehicle.getLoadingRateVolumePerTick());
+    long baseTicks = vehicle != null ? vehicle.getBaseLoadTicks() : 0L;
+    return Math.max(1L, baseTicks + (long) Math.ceil(volume / vehicle.getLoadingRateVolumePerTick()));
   }
 
   private long computeUnloadTicks(Vehicle vehicle, double volume) {
-    // RULE: Per user request for thesis demo, minimum unloading time is set to 60
-    // ticks (1 hour).
-    long baseTicks = 60L;
-    return baseTicks + (long) Math.ceil(volume / vehicle.getUnloadingRateVolumePerTick());
+    long baseTicks = vehicle != null ? vehicle.getBaseUnloadTicks() : 0L;
+    return Math.max(1L, baseTicks + (long) Math.ceil(volume / vehicle.getUnloadingRateVolumePerTick()));
   }
 
   private void autoRefillMainDepot() {
@@ -2684,6 +2737,7 @@ public final class SimulationEngine {
                 "VEHICLE",
                 vehicleId);
           } else {
+            expiredPlan.requests().forEach(ReplenishmentRequest::resetToCreated);
             releasePlannedRequests(expiredPlan);
             vehicle.setStatus(VehicleStatus.IDLE);
             replenishmentPlanDirty = true;

@@ -7,7 +7,6 @@ import {
 import { MapCanvas } from '../components/MapCanvas'
 import { TrafficHeatMap } from '../components/TrafficHeatMap'
 
-const nodeTypes = ['MAIN_DEPOT', 'MICRO_DEPOT', 'INTERSECTION', 'CUSTOMER']
 const MICRO_DEPOT_CAP_M3 = 100
 
 function formatTickLabel(tick) {
@@ -80,7 +79,6 @@ function ScoreBreakdown({ item, showThresholds = false }) {
   if (!item) return null
 
   const stopCount = Number(item.stopCount ?? item.plannedStopCount ?? 0)
-  const hasScore = item.planCost != null || item.planBenefit != null || item.netScore != null
 
   return (
     <div className="space-y-2 rounded-[10px] border border-white/[0.05] bg-[#111620] p-3">
@@ -135,7 +133,6 @@ function ScoreBreakdown({ item, showThresholds = false }) {
 
 function VehicleDetailCard({ vehicle, assignment, onClose }) {
   if (!vehicle) return null
-  const isActive = vehicle.status !== 'IDLE'
 
   return (
     <Card
@@ -356,7 +353,6 @@ export const MapScreen = memo(function MapScreen({
               </thead>
               <tbody>
                 {vehicles.map((v, idx) => {
-                   const assignment = vehicleAssignments.find(a => a.vehicleId === v.id)
                    const loadPct = v.capacityVolume ? Math.round(((Number(v.currentLoad) || 0) / Number(v.capacityVolume)) * 100) : 0
                    const isSelected = selectedVehicleId === v.id
 

@@ -133,6 +133,19 @@ public final class VehicleMovementService {
         assignmentsByVehicle.put(vehicle.getId(), assignment);
         if (assignment.loadingRemainingTicks() == 0) {
           eventLogService.record(currentTick, "VEHICLE_LOADING_COMPLETED", "Yukleme tamamlandi", vehicle.getId() + " araci yuklemeyi tamamlayip cikisa hazir. " + assignment.cargoSummary(), "VEHICLE", vehicle.getId());
+          if (assignment.activeSegment() == null && !assignment.segmentPlans().isEmpty()) {
+            SegmentPlan nextSegment = assignment.segmentPlans().pollFirst();
+            assignment = assignment.withActiveSegment(new SegmentProgress(
+                nextSegment.fromNodeId(),
+                nextSegment.toNodeId(),
+                nextSegment.distanceKm(),
+                nextSegment.distanceKm(),
+                nextSegment.travelTicks(),
+                nextSegment.travelTicks()));
+            vehicle.setStatus("RETURN".equals(assignment.routeType()) ? VehicleStatus.RETURNING : VehicleStatus.EN_ROUTE);
+            assignmentsByVehicle.put(vehicle.getId(), assignment);
+            eventLogService.record(currentTick, "VEHICLE_DEPARTED", "Arac yola cikti", vehicle.getId() + " " + assignment.routeSummary() + ". " + assignment.departureReason(), "VEHICLE", vehicle.getId());
+          }
         }
         results.add(new TickResult(vehicle.getId(), completedStops, null));
         continue;
@@ -229,18 +242,20 @@ public final class VehicleMovementService {
         continue;
       }
 
-      SegmentPlan nextSegment = assignment.segmentPlans().pollFirst();
-      assignment = assignment.withActiveSegment(new SegmentProgress(
-          nextSegment.fromNodeId(),
-          nextSegment.toNodeId(),
-          nextSegment.distanceKm(),
-          nextSegment.distanceKm(),
-          nextSegment.travelTicks(),
-          nextSegment.travelTicks()));
-      vehicle.setStatus("RETURN".equals(assignment.routeType()) ? VehicleStatus.RETURNING : VehicleStatus.EN_ROUTE);
-      assignmentsByVehicle.put(vehicle.getId(), assignment);
-      if (assignment.activeSegment().totalTicks() == nextSegment.travelTicks()) {
-        eventLogService.record(currentTick, "VEHICLE_DEPARTED", "Arac yola cikti", vehicle.getId() + " " + assignment.routeSummary() + ". " + assignment.departureReason(), "VEHICLE", vehicle.getId());
+      if (!assignment.segmentPlans().isEmpty()) {
+        SegmentPlan nextSegment = assignment.segmentPlans().pollFirst();
+        assignment = assignment.withActiveSegment(new SegmentProgress(
+            nextSegment.fromNodeId(),
+            nextSegment.toNodeId(),
+            nextSegment.distanceKm(),
+            nextSegment.distanceKm(),
+            nextSegment.travelTicks(),
+            nextSegment.travelTicks()));
+        vehicle.setStatus("RETURN".equals(assignment.routeType()) ? VehicleStatus.RETURNING : VehicleStatus.EN_ROUTE);
+        assignmentsByVehicle.put(vehicle.getId(), assignment);
+        if (assignment.activeSegment().totalTicks() == nextSegment.travelTicks()) {
+          eventLogService.record(currentTick, "VEHICLE_DEPARTED", "Arac yola cikti", vehicle.getId() + " " + assignment.routeSummary() + ". " + assignment.departureReason(), "VEHICLE", vehicle.getId());
+        }
       }
       results.add(new TickResult(vehicle.getId(), completedStops, completedAssignment));
     }

@@ -1,16 +1,6 @@
-import { useState, useEffect, useMemo, memo } from 'react'
-import { ActionButton, Card, DataTable, Input, SectionLabel, Select, StatusBadge } from '../components/ui'
+import { useMemo, memo } from 'react'
+import { Card, DataTable, StatusBadge } from '../components/ui'
 import { ManuelControlPanel } from '../components/ManuelControlPanel'
-
-const productCategories = ['GENERAL', 'FOOD', 'ELECTRONICS', 'MEDICAL', 'CLEANING']
-
-function splitCsv(value) {
-  return value.split(',').map((item) => item.trim()).filter(Boolean)
-}
-
-function createEmptyLine(productId = '', quantity = 1) {
-  return { productId, quantity }
-}
 
 function formatSimulationTime(tick) {
   const base = new Date('2026-03-29T08:00:00')
@@ -60,25 +50,12 @@ export const OperationsScreen = memo(function OperationsScreen({
   inventory,
   orders,
   replenishments,
-  vehicleReplenishments = [],
   vehicles = [],
   vehicleAssignments = [],
   dispatchReadiness = [],
   doAction,
   api,
-  registerMicroAlert,
 }) {
-  const [inventoryForm, setInventoryForm] = useState({
-    depotId: 'MAIN',
-    productId: products[0]?.id || '',
-    quantity: 0,
-  })
-
-  useEffect(() => {
-    if (!products.length) return
-    setInventoryForm((current) => ({ ...current, productId: current.productId || products[0].id }))
-  }, [products])
-
   const inventoryByDepot = useMemo(() => {
     const map = {}
     inventory.forEach((item) => {
@@ -87,16 +64,6 @@ export const OperationsScreen = memo(function OperationsScreen({
     })
     return map
   }, [inventory])
-
-  const depotOptions = useMemo(
-    () => [...new Set(inventory.map((item) => item.depotId).concat(['MAIN', 'M1', 'M2']))],
-    [inventory],
-  )
-  const customerOptions = useMemo(
-    () => nodes.filter((node) => node.type === 'CUSTOMER').map((node) => node.id),
-    [nodes],
-  )
-  const productOptions = useMemo(() => products.map((product) => product.id), [products])
   const productMetaById = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
     [products],
@@ -467,7 +434,7 @@ export const OperationsScreen = memo(function OperationsScreen({
                       <p className="text-[11px] uppercase tracking-[0.12em] text-slate-600 font-bold">
                         {group.replenishments.length > 1 ? '📦 Birleştirilmiş Talepler' : 'Talep'}
                       </p>
-                      {group.replenishments.map((rep, idx) => (
+                      {group.replenishments.map((rep) => (
                         <div key={rep.id} className={`text-[11px] flex items-center justify-between rounded-lg p-2.5 transition-all ${
                           rep.status === 'IN_TRANSIT' ? 'bg-blue-500/10 border border-blue-500/20' :
                           rep.awaitingApproval ? 'bg-amber-500/10 border border-amber-500/20' :

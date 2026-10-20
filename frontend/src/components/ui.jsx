@@ -116,7 +116,7 @@ export function PageHeader({ title, subtitle, status, children }) {
 }
 
 // ─── Clock Panel ─────────────────────────────────────────────────────────────
-export function ClockPanel({ label, value, accent = 'dark' }) {
+export function ClockPanel({ label, value }) {
   return (
     <div className="flex items-center gap-3 rounded-[12px] border border-white/[0.07] bg-[#161b24] px-4 py-2.5">
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-orange-400">
@@ -148,7 +148,7 @@ export function AlertTicker({ title, items, emptyMessage }) {
         <p className="text-[12px] text-slate-600 font-medium">{emptyMessage}</p>
       ) : (
         <div className="grid gap-2.5 lg:grid-cols-3">
-          {items.map((item, idx) => (
+          {items.map((item) => (
             <div key={item.id} className="rounded-[10px] border border-orange-500/15 bg-[#0a0e18]/60 p-3 backdrop-blur-sm transition-all duration-300 hover:border-orange-500/30 hover:bg-orange-950/20">
               <p className="text-[12px] font-bold text-white/90">{item.title}</p>
               <p className="mt-0.5 text-[11px] text-slate-400 leading-relaxed">{item.subtitle}</p>
