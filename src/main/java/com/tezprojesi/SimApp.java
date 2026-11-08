@@ -96,13 +96,17 @@ public class SimApp {
   }
 
   @Bean public OrderGenerator orderGenerator(
-      EventBus eventBus, SimulationProperties props, ProductCatalogService productCatalogService) {
+      EventBus eventBus,
+      SimulationProperties props,
+      ProductCatalogService productCatalogService,
+      RoutingService routingService) {
     return new OrderGenerator(
         props.getOrderRate(),
         List.of("M1", "M2", "M3", "M4", "M5"),
         productCatalogService,
         new Random(),
-        eventBus);
+        eventBus,
+        routingService);
   }
 
   @Bean public SimulationEngine simulationEngine(

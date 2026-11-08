@@ -20,15 +20,26 @@ public final class OrderGenerator {
 
   private final double orderArrivalRatePerTick;
   private final ProductCatalogService productCatalogService;
-  private final RoutingService routingService = new RoutingService();
+  private final RoutingService routingService;
   private final Random random;
   private final AtomicLong sequence = new AtomicLong(0);
+
   public OrderGenerator(
       double orderArrivalRatePerTick,
       List<String> microDepotIds,
       ProductCatalogService productCatalogService,
       Random random,
       EventBus eventBus) {
+    this(orderArrivalRatePerTick, microDepotIds, productCatalogService, random, eventBus, new RoutingService());
+  }
+
+  public OrderGenerator(
+      double orderArrivalRatePerTick,
+      List<String> microDepotIds,
+      ProductCatalogService productCatalogService,
+      Random random,
+      EventBus eventBus,
+      RoutingService routingService) {
     if (orderArrivalRatePerTick < 0) {
       throw new IllegalArgumentException("orderArrivalRatePerTick must be >= 0");
     }
@@ -36,6 +47,7 @@ public final class OrderGenerator {
     this.productCatalogService = Objects.requireNonNull(productCatalogService, "productCatalogService");
     this.random = Objects.requireNonNull(random, "random");
     Objects.requireNonNull(eventBus, "eventBus");
+    this.routingService = Objects.requireNonNull(routingService, "routingService");
   }
 
   public List<Order> generateOrders(long tick, List<Depot> depots, com.tezprojesi.routing.CityGraph graph) {

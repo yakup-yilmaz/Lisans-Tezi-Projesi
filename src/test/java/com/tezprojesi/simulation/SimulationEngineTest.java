@@ -1825,6 +1825,192 @@ class SimulationEngineTest {
     assertEquals(com.tezprojesi.domain.ReplenishmentStatus.IN_TRANSIT, request.getStatus());
     assertEquals(1, engine.getVehicleAssignments().size());
   }
+
+  @Test
+  void simulationEngine_consolidateTowardsMinimumVolume_doesNotLeakManualRequestIntoAutonomousVehicle() {
+    CityGraph graph = new CityGraph();
+    graph.addNode(new Node("MAIN", NodeType.MAIN_DEPOT));
+    graph.addNode(new Node("M1", NodeType.MICRO_DEPOT));
+    graph.addNode(new Node("M2", NodeType.MICRO_DEPOT));
+    graph.addEdge(new Edge("MAIN", "M1", 2.0, 1.0));
+    graph.addEdge(new Edge("M1", "MAIN", 2.0, 1.0));
+    graph.addEdge(new Edge("MAIN", "M2", 2.0, 1.0));
+    graph.addEdge(new Edge("M2", "MAIN", 2.0, 1.0));
+    graph.addEdge(new Edge("M1", "M2", 1.0, 1.0));
+    graph.addEdge(new Edge("M2", "M1", 1.0, 1.0));
+
+    List<Depot> depots = List.of(
+        new Depot("MAIN", DepotType.MAIN, "MAIN"),
+        new Depot("M1", DepotType.MICRO, "M1"),
+        new Depot("M2", DepotType.MICRO, "M2"));
+
+    // Standard autonomous vehicle with 20.0 capacity, 50% min load (10 m3)
+    Vehicle autoVehicle = new Vehicle("AUTO-1", 20.0, "MAIN");
+
+    EventBus eventBus = new EventBus();
+    ProductCatalogService productCatalogService = new ProductCatalogService();
+    productCatalogService.save(new Product("P1", "Water", ProductCategory.FOOD, 1.0, 1.0, 100.0));
+    InventoryService inventoryService = new InventoryService();
+    inventoryService.setStock("MAIN", "P1", 100);
+    inventoryService.setStock("M1", "P1", 0);
+    inventoryService.setStock("M2", "P1", 0);
+
+    OrderGenerator orderGenerator = new OrderGenerator(0.0, List.of("M1", "M2"), productCatalogService, new Random(0), eventBus);
+    SimulationEventLogService eventLogService = new SimulationEventLogService();
+    VehicleMovementService movementService = new VehicleMovementService(eventBus, eventLogService);
+    TrafficManager trafficManager = new TrafficManager(new Random(0));
+    MetricsEventHandler metrics = new MetricsEventHandler(eventBus);
+    ReplenishmentService replenishmentService = new ReplenishmentService();
+    VehicleReportService vehicleReportService = new VehicleReportService();
+    RoutingService routingService = new RoutingService();
+    DispatchService dispatchService = new DispatchService(new DepotSelector(), new VehicleSelector(), routingService, eventBus);
+
+    SimulationEngine engine = new SimulationEngine(
+        graph,
+        dispatchService,
+        routingService,
+        orderGenerator,
+        movementService,
+        trafficManager,
+        metrics,
+        eventBus,
+        productCatalogService,
+        inventoryService,
+        replenishmentService,
+        vehicleReportService,
+        eventLogService,
+        new InMemoryOrderRepository(),
+        new com.tezprojesi.api.repository.InMemoryVehicleRepository(),
+        depots,
+        List.of(autoVehicle),
+        new HashMap<>(Map.of("MAIN", 100.0, "M1", 0.0, "M2", 0.0)),
+        new HashMap<>(),
+        1000,
+        1.0,
+        1.01,
+        0,
+        0.50,
+        new HashMap<>(),
+        750L,
+        0.30,
+        true);
+
+    // Regular autonomous request: 8 m3 (< 50% load -> needs consolidation)
+    ReplenishmentRequest regularReq = replenishmentService.create("MAIN", "M1", List.of(new OrderLine("P1", 8, 1.0)), 0L);
+
+    // Manual request: 5 m3 (marked as manual!)
+    ReplenishmentRequest manualReq = replenishmentService.create("MAIN", "M2", List.of(new OrderLine("P1", 5, 1.0)), 0L);
+    manualReq.setManual(true);
+
+    engine.submitReplenishmentRequest(regularReq);
+    engine.submitReplenishmentRequest(manualReq);
+
+    engine.stepTicks(1);
+
+    // AUTO-1 must NOT consolidate the manual request into its plan!
+    assertTrue(engine.getVehicleAssignments().isEmpty(),
+        "Autonomous vehicle must not grab manual requests to bypass threshold and dispatch prematurely");
+    var readiness = engine.getDispatchReadiness();
+    if (!readiness.isEmpty()) {
+      assertFalse(readiness.get(0).requestIds().contains(manualReq.getId()),
+          "Manual request must never be attached to standard autonomous vehicle's plan");
+    }
+  }
+
+  @Test
+  void simulationEngine_largeStopList_doesNotCauseFactorialExplosion() {
+    CityGraph graph = new CityGraph();
+    graph.addNode(new Node("MAIN", NodeType.MAIN_DEPOT));
+    graph.addNode(new Node("M1", NodeType.MICRO_DEPOT));
+    graph.addEdge(new Edge("MAIN", "M1", 2.0, 1.0));
+    graph.addEdge(new Edge("M1", "MAIN", 2.0, 1.0));
+
+    List<Depot> depots = List.of(
+        new Depot("MAIN", DepotType.MAIN, "MAIN"),
+        new Depot("M1", DepotType.MICRO, "M1"));
+
+    // Dedicated manual vehicle
+    Vehicle manualVehicle = new Vehicle(
+        "MANUAL-1",
+        100.0,
+        "MAIN",
+        "ELECTRIC",
+        4.50,
+        Set.of(ProductCategory.FOOD, ProductCategory.GENERAL, ProductCategory.CLEANING, ProductCategory.ELECTRONICS, ProductCategory.MEDICAL),
+        Set.of(com.tezprojesi.domain.VehicleCapability.STANDARD_BOX),
+        "34SQ007",
+        "Driver Manual",
+        0.0,
+        4,
+        0,
+        40.0,
+        15.0,
+        12.0,
+        1,
+        1,
+        true);
+
+    EventBus eventBus = new EventBus();
+    ProductCatalogService productCatalogService = new ProductCatalogService();
+    productCatalogService.save(new Product("P1", "Water", ProductCategory.FOOD, 1.0, 1.0, 100.0));
+    InventoryService inventoryService = new InventoryService();
+    inventoryService.setStock("MAIN", "P1", 500);
+    inventoryService.setStock("M1", "P1", 0);
+
+    OrderGenerator orderGenerator = new OrderGenerator(0.0, List.of("M1"), productCatalogService, new Random(0), eventBus);
+    SimulationEventLogService eventLogService = new SimulationEventLogService();
+    VehicleMovementService movementService = new VehicleMovementService(eventBus, eventLogService);
+    TrafficManager trafficManager = new TrafficManager(new Random(0));
+    MetricsEventHandler metrics = new MetricsEventHandler(eventBus);
+    ReplenishmentService replenishmentService = new ReplenishmentService();
+    VehicleReportService vehicleReportService = new VehicleReportService();
+    RoutingService routingService = new RoutingService();
+    DispatchService dispatchService = new DispatchService(new DepotSelector(), new VehicleSelector(), routingService, eventBus);
+
+    SimulationEngine engine = new SimulationEngine(
+        graph,
+        dispatchService,
+        routingService,
+        orderGenerator,
+        movementService,
+        trafficManager,
+        metrics,
+        eventBus,
+        productCatalogService,
+        inventoryService,
+        replenishmentService,
+        vehicleReportService,
+        eventLogService,
+        new InMemoryOrderRepository(),
+        new com.tezprojesi.api.repository.InMemoryVehicleRepository(),
+        depots,
+        List.of(manualVehicle),
+        new HashMap<>(Map.of("MAIN", 500.0, "M1", 0.0)),
+        new HashMap<>(),
+        1000,
+        1.0,
+        1.01,
+        0,
+        0.50,
+        new HashMap<>(),
+        750L,
+        0.30,
+        true);
+
+    // Submit 12 distinct manual requests
+    for (int i = 0; i < 12; i++) {
+      ReplenishmentRequest req = replenishmentService.create("MAIN", "M1", List.of(new OrderLine("P1", 2, 1.0)), 0L);
+      req.setManual(true);
+      engine.submitReplenishmentRequest(req);
+    }
+
+    // Step tick - should complete instantly without OutOfMemoryError or hanging
+    long start = System.currentTimeMillis();
+    engine.stepTicks(1);
+    long elapsed = System.currentTimeMillis() - start;
+
+    assertTrue(elapsed < 2000, "12 requests should be planned within 2 seconds without O(N!) combinatorial hang");
+  }
 }
 
 

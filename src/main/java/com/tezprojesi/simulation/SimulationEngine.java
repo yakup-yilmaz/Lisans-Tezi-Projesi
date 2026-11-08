@@ -547,13 +547,11 @@ public final class SimulationEngine {
       // double-ordering.
       // Request quantity = (baseline * 0.80) - (currentStock + incomingQuantity)
       int incomingQuantity = replenishmentService.getIncomingQuantity(depotId, productId);
-      int effectiveGap = targetLevel - (currentStock + incomingQuantity);
+      int activeReplenishmentQuantity = activeReplenishmentQuantityForProduct(depotId, productId);
+      int totalPendingStock = Math.max(incomingQuantity, activeReplenishmentQuantity);
+      int effectiveGap = targetLevel - (currentStock + totalPendingStock);
       if (effectiveGap <= 0) {
         // Incoming stock already covers the target — skip.
-        continue;
-      }
-      int activeReplenishmentQuantity = activeReplenishmentQuantityForProduct(depotId, productId);
-      if (activeReplenishmentQuantity >= effectiveGap) {
         continue;
       }
       if (lastTriggerTick == currentTick) {
@@ -666,8 +664,8 @@ public final class SimulationEngine {
       return 0;
     }
 
-    // Calculate effective gap considering all pending stock
-    int totalPendingStock = incomingQuantity + activeReplenishmentQuantity;
+    // Calculate effective gap considering all pending stock without double-counting shared open requests
+    int totalPendingStock = Math.max(incomingQuantity, activeReplenishmentQuantity);
     int effectiveGap = Math.max(0, targetLevel - (currentStock + totalPendingStock));
 
     if (effectiveGap <= 0) {
@@ -754,7 +752,7 @@ public final class SimulationEngine {
         if (approvalPendingPlansByVehicle.containsKey(vehicle.getId())) {
           DeliveryPlan queuedPlan = refreshApprovalPendingPlanUnsafe(vehicle, mainDepot,
               approvalPendingPlansByVehicle.get(vehicle.getId()));
-          long waitedTicks = computeWaitedTicks(vehicle, mainDepot);
+          long waitedTicks = computePlanRequestWaitTicks(queuedPlan);
           dispatchReadinessByVehicle.put(vehicle.getId(),
               buildDispatchReadiness(vehicle, queuedPlan, waitedTicks, true, true));
           emitCapacityBannerIfNeeded(vehicle, queuedPlan, true);
@@ -799,31 +797,48 @@ public final class SimulationEngine {
     }
 
     Set<String> claimedRequestIds = new HashSet<>();
-    for (Vehicle vehicle : availableVehicles) {
+    List<Vehicle> remainingIdleVehicles = new ArrayList<>(availableVehicles);
+    while (!remainingIdleVehicles.isEmpty()) {
       List<ReplenishmentRequest> pending = pendingRequestsForPlanning().stream()
           .filter(r -> !claimedRequestIds.contains(r.getId()))
           .toList();
       if (pending.isEmpty()) {
-        dispatchReadinessByVehicle.remove(vehicle.getId());
-        continue;
+        for (Vehicle leftover : remainingIdleVehicles) {
+          dispatchReadinessByVehicle.remove(leftover.getId());
+        }
+        break;
       }
-      VehiclePlanOption option = evaluateVehiclePlan(vehicle, mainDepot, pending);
-      if (option == null) {
-        dispatchReadinessByVehicle.remove(vehicle.getId());
-        continue;
+      VehiclePlanOption bestWaitingOption = null;
+      Vehicle chosenVehicle = null;
+      for (Vehicle candidateVehicle : remainingIdleVehicles) {
+        VehiclePlanOption option = evaluateVehiclePlan(candidateVehicle, mainDepot, pending);
+        if (option == null) {
+          continue;
+        }
+        if (bestWaitingOption == null || option.selectionCost() < bestWaitingOption.selectionCost()) {
+          bestWaitingOption = option;
+          chosenVehicle = candidateVehicle;
+        }
       }
+      if (bestWaitingOption == null || chosenVehicle == null) {
+        for (Vehicle leftover : remainingIdleVehicles) {
+          dispatchReadinessByVehicle.remove(leftover.getId());
+        }
+        break;
+      }
+      remainingIdleVehicles.remove(chosenVehicle);
       // Record requests claimed by this vehicle so subsequent idle vehicles can take
       // other corridors
-      option.plan().requests().forEach(r -> claimedRequestIds.add(r.getId()));
+      bestWaitingOption.plan().requests().forEach(r -> claimedRequestIds.add(r.getId()));
 
-      if (!option.readyToDispatch() && !option.awaitingApproval()) {
-        annotateDeferredForConsolidation(vehicle, option.plan());
+      if (!bestWaitingOption.readyToDispatch() && !bestWaitingOption.awaitingApproval()) {
+        annotateDeferredForConsolidation(chosenVehicle, bestWaitingOption.plan());
       }
       dispatchReadinessByVehicle.put(
-          vehicle.getId(),
-          buildDispatchReadiness(vehicle, option.plan(), option.waitedTicks(), option.readyToDispatch(),
-              option.awaitingApproval()));
-      emitCapacityBannerIfNeeded(vehicle, option.plan(), option.awaitingApproval());
+          chosenVehicle.getId(),
+          buildDispatchReadiness(chosenVehicle, bestWaitingOption.plan(), bestWaitingOption.waitedTicks(),
+              bestWaitingOption.readyToDispatch(), bestWaitingOption.awaitingApproval()));
+      emitCapacityBannerIfNeeded(chosenVehicle, bestWaitingOption.plan(), bestWaitingOption.awaitingApproval());
     }
   }
 
@@ -840,7 +855,7 @@ public final class SimulationEngine {
         if (queuedPlan == null) {
           continue;
         }
-        long waitedTicks = computeWaitedTicks(vehicle, mainDepot);
+        long waitedTicks = computePlanRequestWaitTicks(queuedPlan);
         dispatchReadinessByVehicle.put(vehicle.getId(),
             buildDispatchReadiness(vehicle, queuedPlan, waitedTicks, true, true));
         emitCapacityBannerIfNeeded(vehicle, queuedPlan, true);
@@ -856,13 +871,36 @@ public final class SimulationEngine {
       return null;
     }
     return vehiclesToEvaluate.stream()
-        .map(vehicle -> evaluateVehiclePlan(vehicle, mainDepot, pending))
+        .map(vehicle -> evaluateActionableVehiclePlan(vehicle, mainDepot, pending))
         .filter(Objects::nonNull)
-        .filter(option -> option.readyToDispatch() || (requireManualDispatchApproval && option.awaitingApproval()))
         .min(Comparator
             .comparing((VehiclePlanOption opt) -> !opt.readyToDispatch())
             .thenComparingDouble(VehiclePlanOption::selectionCost))
         .orElse(null);
+  }
+
+  private VehiclePlanOption evaluateActionableVehiclePlan(
+      Vehicle vehicle,
+      Depot mainDepot,
+      List<ReplenishmentRequest> pending) {
+    List<ReplenishmentRequest> remaining = new ArrayList<>(pending);
+    while (!remaining.isEmpty()) {
+      VehiclePlanOption option = evaluateVehiclePlan(vehicle, mainDepot, remaining);
+      if (option == null) {
+        return null;
+      }
+      if (option.readyToDispatch() || (requireManualDispatchApproval && option.awaitingApproval())) {
+        return option;
+      }
+      Set<String> deferredIds = option.plan().requests().stream()
+          .map(ReplenishmentRequest::getId)
+          .collect(Collectors.toSet());
+      boolean removed = remaining.removeIf(r -> deferredIds.contains(r.getId()));
+      if (!removed) {
+        break;
+      }
+    }
+    return null;
   }
 
   private VehiclePlanOption evaluateVehiclePlan(Vehicle vehicle, Depot mainDepot, List<ReplenishmentRequest> pending) {
@@ -870,7 +908,7 @@ public final class SimulationEngine {
     if (bestPlan == null) {
       return null;
     }
-    long waitedTicks = computeWaitedTicks(vehicle, mainDepot);
+    long vehicleIdleTicks = computeWaitedTicks(vehicle, mainDepot);
     double projectedLoadFraction = vehicle.getCapacityVolume() <= 0 ? 0.0
         : bestPlan.totalVolume() / vehicle.getCapacityVolume();
 
@@ -880,27 +918,22 @@ public final class SimulationEngine {
 
     double minDepartureFraction = vehicle.getMinimumDepartureLoadFraction();
     boolean minimumLoadReached = bypassThreshold || projectedLoadFraction >= minDepartureFraction;
+
+    // --- FAZ 1: Kademeli Toleranslı (Grace-Period) Gecikmeli Aging ve SLA Onay Modeli ---
+    // Yük bekleme süresi, araca atanan ilk (en eski) yükten itibaren sayılır;
+    // sonradan yeni yük eklendiğinde sıfırlanmaz, ilk yükün süresinden devam eder.
+    long waitedTicks = computePlanRequestWaitTicks(bestPlan);
     long maxWaitTicks = vehicle.getMaxWaitTicks();
     boolean maxWaitTimerElapsed = maxWaitTicks > 0L && waitedTicks >= maxWaitTicks;
 
-    // --- FAZ 1: Kademeli Toleranslı (Grace-Period) Gecikmeli Aging ve SLA Onay Modeli ---
-    // 1. Doğal Konsolidasyon Penceresi (Grace Period): İlk 300 tick (5 saat) boyunca aging = 0
-    // ve araç konsolidasyon bekler, operatör erken butonlarla meşgul edilmez.
-    long maxRequestWaitTicks = bestPlan.requests().stream()
-        .mapToLong(req -> Math.max(0L, currentTick - req.getCreatedTick()))
-        .max()
-        .orElse(0L);
-
     long gracePeriodTicks = 300L; // 5 saat doğal konsolidasyon penceresi
-    long overdueTicks = Math.max(0L, maxRequestWaitTicks - gracePeriodTicks);
+    long overdueTicks = Math.max(0L, waitedTicks - gracePeriodTicks);
     double delayedAgingScore = overdueTicks <= 0L ? 0.0 : Math.min(1000.0, Math.pow(overdueTicks, 2) * 0.02);
 
     boolean slaTriggered = false;
     boolean isFinancialWarning = false;
 
-    if (maxWaitTimerElapsed) {
-      slaTriggered = true;
-    } else if (overdueTicks > 0L) {
+    if (overdueTicks > 0L) {
       if (projectedLoadFraction >= 0.20 && projectedLoadFraction < minDepartureFraction) {
         // %20 - %49: Aging >= 600 (~8. saat, mesai/gün sonu)
         slaTriggered = (delayedAgingScore >= 600.0);
@@ -942,10 +975,10 @@ public final class SimulationEngine {
           waitedTicks,
           projectedLoadFraction,
           false,
-          maxWaitTimerElapsed,
+          overdueTicks > 0L,
           false,
           awaitingSlaApproval,
-          computeVehicleSelectionCost(vehicle, bestPlan, waitedTicks));
+          computeVehicleSelectionCost(vehicle, bestPlan, vehicleIdleTicks));
     }
 
     boolean readyByLoadAndTime;
@@ -970,7 +1003,7 @@ public final class SimulationEngine {
         waitedTicks >= 180, // maxWaitReached
         readyToDispatch,
         awaitingApproval,
-        computeVehicleSelectionCost(vehicle, bestPlan, waitedTicks));
+        computeVehicleSelectionCost(vehicle, bestPlan, vehicleIdleTicks));
   }
 
   private List<ReplenishmentRequest> pendingRequestsForPlanning() {
@@ -995,6 +1028,16 @@ public final class SimulationEngine {
 
   private boolean isRequestPendingPlanning(ReplenishmentRequest request) {
     return request.getStatus() == ReplenishmentStatus.CREATED && !plannedRequestIds.contains(request.getId());
+  }
+
+  private long computePlanRequestWaitTicks(DeliveryPlan plan) {
+    if (plan == null || plan.requests() == null || plan.requests().isEmpty()) {
+      return 0L;
+    }
+    return plan.requests().stream()
+        .mapToLong(req -> Math.max(0L, currentTick - req.getCreatedTick()))
+        .max()
+        .orElse(0L);
   }
 
   private long computeWaitedTicks(Vehicle vehicle, Depot mainDepot) {
@@ -1185,6 +1228,7 @@ public final class SimulationEngine {
     while (plan.totalVolume() < targetVolume - 1e-6 && plan.stopPlans().size() < effectiveDeliveryStopLimit(vehicle)) {
       final DeliveryPlan snapshot = plan;
       List<ReplenishmentRequest> candidates = pending.stream()
+          .filter(request -> vehicle.isDedicatedManual() == request.isManual())
           .filter(request -> !snapshot.requests().contains(request))
           .filter(request -> snapshot.totalVolume() + request.getTotalVolume() <= vehicle.getCapacityVolume())
           .filter(request -> supportsCategories(vehicle, request))
@@ -1247,6 +1291,7 @@ public final class SimulationEngine {
         currentSequenceCost += scoreToTarget(vehicle, tempNode, depotNode(stop.targetDepotId()));
         tempNode = depotNode(stop.targetDepotId());
       }
+      currentSequenceCost += scoreToTarget(vehicle, tempNode, mainDepot.getNodeId());
       if (currentSequenceCost < minSequenceCost) {
         minSequenceCost = currentSequenceCost;
         bestSequence = sequenceCandidate;
@@ -1476,6 +1521,9 @@ public final class SimulationEngine {
     if (original.isEmpty()) {
       return List.of(List.of());
     }
+    if (original.size() > 7) {
+      return List.of(List.copyOf(original));
+    }
     List<List<T>> result = new ArrayList<>();
     T first = original.get(0);
     List<T> rest = original.subList(1, original.size());
@@ -1501,18 +1549,71 @@ public final class SimulationEngine {
   }
 
   private void updateStagedPlanScores(Depot mainDepot) {
-    // 1. Onay bekleyen planların skorlarını güncelle
-    approvalPendingPlansByVehicle.forEach((vehicleId, plan) -> {
-      Vehicle v = vehicles.stream().filter(vch -> vch.getId().equals(vehicleId)).findFirst().orElse(null);
-      if (v != null) {
-        DeliveryPlan updated = buildPlan(v, mainDepot, plan.requests());
+    // 1. Onay bekleyen planların skorlarını güncelle ve yeni gelen uygun yüklerle konsolidasyona devam et
+    approvalLock.lock();
+    try {
+      for (String vehicleId : new ArrayList<>(approvalPendingPlansByVehicle.keySet())) {
+        DeliveryPlan plan = approvalPendingPlansByVehicle.get(vehicleId);
+        if (plan == null) {
+          continue;
+        }
+        Vehicle v = vehicles.stream().filter(vch -> vch.getId().equals(vehicleId)).findFirst().orElse(null);
+        if (v == null) {
+          continue;
+        }
+        List<ReplenishmentRequest> combinedRequests = new ArrayList<>(plan.requests());
+        List<ReplenishmentRequest> newlyAdded = new ArrayList<>();
+        double currentVol = plan.totalVolume();
+        for (ReplenishmentRequest candidateReq : pendingRequestsForPlanning()) {
+          if (combinedRequests.contains(candidateReq)) {
+            continue;
+          }
+          if (v.isDedicatedManual() != candidateReq.isManual()) {
+            continue;
+          }
+          if (currentVol + candidateReq.getTotalVolume() > v.getCapacityVolume()) {
+            continue;
+          }
+          if (!supportsCategories(v, candidateReq) || !supportsCapabilities(v, candidateReq)) {
+            continue;
+          }
+          List<ReplenishmentRequest> trial = new ArrayList<>(combinedRequests);
+          trial.add(candidateReq);
+          DeliveryPlan trialPlan = buildPlan(v, mainDepot, trial);
+          if (trialPlan != null && isWithinMultiStopDeviation(plan, trialPlan)) {
+            combinedRequests.add(candidateReq);
+            newlyAdded.add(candidateReq);
+            currentVol = trialPlan.totalVolume();
+            plan = trialPlan.withDecision(plan.decisionReason(), trialPlan.comparisonSummary());
+          }
+        }
+        DeliveryPlan updated = buildPlan(v, mainDepot, combinedRequests);
         if (updated != null) {
-          DeliveryPlan updatedWithDecision = updated.withDecision(plan.decisionReason(), plan.comparisonSummary());
-          approvalPendingPlansByVehicle.put(vehicleId, updatedWithDecision);
-          reserveDecisionDetails(updatedWithDecision);
+          if (!newlyAdded.isEmpty()) {
+            for (ReplenishmentRequest added : newlyAdded) {
+              plannedRequestIds.add(added.getId());
+              added.assignVehicle(v.getId());
+            }
+          }
+          DeliveryPlan updatedWithDecision = updated.withDecision(plan.decisionReason(), updated.comparisonSummary());
+          double loadFraction = v.getCapacityVolume() <= 0 ? 0.0
+              : updatedWithDecision.totalVolume() / v.getCapacityVolume();
+          if (loadFraction >= 0.75) {
+            approvalPendingPlansByVehicle.remove(vehicleId);
+            approvalWaitingSinceTick.remove(vehicleId);
+            approvalTimeoutLimitTicks.remove(vehicleId);
+            dispatchReadinessByVehicle.remove(vehicleId);
+            long waitedTicks = computePlanRequestWaitTicks(updatedWithDecision);
+            dispatchPlan(v, updatedWithDecision, waitedTicks);
+          } else {
+            approvalPendingPlansByVehicle.put(vehicleId, updatedWithDecision);
+            reserveDecisionDetails(updatedWithDecision);
+          }
         }
       }
-    });
+    } finally {
+      approvalLock.unlock();
+    }
 
     // 2. Dispatch bekleyen (Ready) planların skorlarını güncelle
     dispatchReadinessByVehicle.forEach((vehicleId, snapshot) -> {
@@ -1633,7 +1734,12 @@ public final class SimulationEngine {
         // Set WAITING_FOR_APPROVAL status so the vehicle does not depart autonomously.
         vehicle.setStatus(VehicleStatus.WAITING_FOR_APPROVAL);
         approvalWaitingSinceTick.put(vehicle.getId(), currentTick);
-        long approvalWindow = Math.max(5L, 180L - waitedTicks);
+        double loadFraction = vehicle.getCapacityVolume() <= 0 ? 0.0
+            : latestPlan.totalVolume() / vehicle.getCapacityVolume();
+        long maxWait = vehicle.getMaxWaitTicks() > 0 ? vehicle.getMaxWaitTicks() : 180L;
+        long approvalWindow = loadFraction >= 0.50
+            ? Math.max(5L, maxWait - waitedTicks)
+            : 240L;
         approvalTimeoutLimitTicks.put(vehicle.getId(), approvalWindow);
         String approvalTitle = "Arac cikis onayi bekliyor";
         String approvalDetail = vehicle.getId() + " araci " + latestPlan.routeSummary()
@@ -2242,7 +2348,7 @@ public final class SimulationEngine {
           .flatMap(request -> request.getItems().stream())
           .toList());
       double depotVolume = depotItems.stream().mapToDouble(OrderLine::getLineVolume).sum();
-      if (depotVolume <= vehicle.getCapacityVolume()) {
+      if (depotVolume <= vehicle.getCapacityVolume() + 1e-6) {
         mergedStops.add(new MergedStop(
             depotRequests.get(0).getTargetDepotId(),
             depotRequests.stream().map(ReplenishmentRequest::getId).toList(),
@@ -2694,7 +2800,7 @@ public final class SimulationEngine {
       approvalPendingPlansByVehicle.remove(vehicleId);
       approvalWaitingSinceTick.remove(vehicleId);
       approvalTimeoutLimitTicks.remove(vehicleId);
-      long waitedTicks = computeWaitedTicks(vehicle, mainDepot());
+      long waitedTicks = computePlanRequestWaitTicks(plan);
       dispatchPlan(vehicle, plan, waitedTicks);
     } finally {
       approvalLock.unlock();
@@ -2773,6 +2879,8 @@ public final class SimulationEngine {
       graph.clear();
       initialNodes.forEach(graph::addNode);
       initialEdges.forEach(graph::addEdge);
+      routingService.clearRouteCache();
+      routingService.invalidateRouteCache();
 
       depots.clear();
       depots.addAll(initialDepots.stream().map(this::copyDepot).toList());

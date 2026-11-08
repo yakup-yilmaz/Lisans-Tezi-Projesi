@@ -79,4 +79,57 @@ class RoutingServiceTest {
 
     assertEquals(List.of("A"), result);
   }
+
+  @Test
+  void computeShortestPath_cachesDistinctlyPerRoutingProfile() {
+    CityGraph graph = new CityGraph();
+    graph.addNode(new Node("A", NodeType.MAIN_DEPOT));
+    graph.addNode(new Node("B", NodeType.INTERSECTION));
+    graph.addNode(new Node("C", NodeType.MICRO_DEPOT));
+
+    // Path 1 (via B): short distance (2 km) but high toll (50 TL)
+    graph.addEdge(new Edge("A", "B", 1.0, 1.0, 50.0));
+    graph.addEdge(new Edge("B", "C", 1.0, 1.0, 0.0));
+
+    // Path 2 (direct A -> C): longer distance (10 km) but zero toll (0 TL)
+    graph.addEdge(new Edge("A", "C", 10.0, 1.0, 0.0));
+
+    RoutingService routing = new RoutingService();
+
+    // Profile 1: Light vehicle, tollWeightMultiplier = 1.0, low tollPenalty = 0.05
+    // Cost via B: 2*1.0 + 50*0.05 = 4.5 TL < 10 TL => chooses A -> B -> C
+    RoutingService.RoutingProfile lightProfile = new RoutingService.RoutingProfile(1.0, 0.05, 1.0, 0.12);
+    List<String> pathLight = routing.computeShortestPath(graph, "A", "C", lightProfile);
+    assertEquals(List.of("A", "B", "C"), pathLight);
+
+    // Profile 2: Heavy truck, tollPenalty = 1.0, tollWeightMultiplier = 1.35
+    // Cost via B: 2*1.0 + 50*1.0*1.35 = 69.5 TL > 10 TL => chooses direct A -> C
+    // With cache key including routingProfile, heavy truck must NOT get cached light path!
+    RoutingService.RoutingProfile heavyProfile = new RoutingService.RoutingProfile(1.0, 1.0, 1.35, 0.12);
+    List<String> pathHeavy = routing.computeShortestPath(graph, "A", "C", heavyProfile);
+    assertEquals(List.of("A", "C"), pathHeavy, "RoutingProfile must not be polluted by previous cached route");
+  }
+
+  @Test
+  void invalidateRouteCache_forcesRecalculationOnTrafficChange() {
+    CityGraph graph = new CityGraph();
+    graph.addNode(new Node("A", NodeType.MAIN_DEPOT));
+    graph.addNode(new Node("B", NodeType.INTERSECTION));
+    graph.addNode(new Node("C", NodeType.MICRO_DEPOT));
+
+    graph.addEdge(new Edge("A", "B", 2.0, 1.0));
+    graph.addEdge(new Edge("B", "C", 2.0, 1.0));
+    graph.addEdge(new Edge("A", "C", 5.0, 1.0));
+
+    RoutingService routing = new RoutingService();
+    List<String> initial = routing.computeShortestPath(graph, "A", "C");
+    assertEquals(List.of("A", "B", "C"), initial);
+
+    // Increase traffic on A -> B heavily
+    graph.setEdge("A", "B", 2.0, 10.0, 0.0);
+    routing.invalidateRouteCache();
+
+    List<String> updated = routing.computeShortestPath(graph, "A", "C");
+    assertEquals(List.of("A", "C"), updated, "Invalidating cache must allow Dijkstra to find new optimal route");
+  }
 }

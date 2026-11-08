@@ -115,6 +115,7 @@ public class GraphController {
           request.getTrafficFactor(),
           request.getTollCost());
     }
+    routingService.invalidateRouteCache();
 
     return ResponseEntity.ok(toEdgeDto(cityGraph.getEdge(request.getFromNodeId(), request.getToNodeId())));
   }
@@ -131,6 +132,7 @@ public class GraphController {
       ensureEdgeExists(request.getToNodeId(), request.getFromNodeId());
       applyTrafficUpdate(request.getToNodeId(), request.getFromNodeId(), request.getTrafficFactor(), request.isLocked());
     }
+    routingService.invalidateRouteCache();
     return ResponseEntity.ok(toEdgeDto(cityGraph.getEdge(request.getFromNodeId(), request.getToNodeId())));
   }
 
@@ -146,6 +148,7 @@ public class GraphController {
       ensureEdgeExists(request.getToNodeId(), request.getFromNodeId());
       cityGraph.updateTollCost(request.getToNodeId(), request.getFromNodeId(), request.getTollCost());
     }
+    routingService.invalidateRouteCache();
     return ResponseEntity.ok(toEdgeDto(cityGraph.getEdge(request.getFromNodeId(), request.getToNodeId())));
   }
 

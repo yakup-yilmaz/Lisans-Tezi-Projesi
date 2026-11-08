@@ -88,8 +88,8 @@ public final class RoutingService {
       return Collections.singletonList(sourceNodeId);
     }
 
-    // OPTIMIZATION: Cache key includes traffic generation to handle dynamic traffic
-    String cacheKey = buildCacheKey(sourceNodeId, targetNodeId, trafficGeneration.get());
+    // OPTIMIZATION: Cache key includes traffic generation and routing profile to handle dynamic traffic and vehicle-specific costs
+    String cacheKey = buildCacheKey(sourceNodeId, targetNodeId, trafficGeneration.get(), routingProfile);
     
     // Check cache first (O(1) lookup)
     CachedRoute cached = routeCache.get(cacheKey);
@@ -248,8 +248,12 @@ public final class RoutingService {
    * Format: sourceNodeId|targetNodeId|trafficGeneration
    * Simple string concatenation is faster than Object.hash() for this use case.
    */
-  private String buildCacheKey(String sourceNodeId, String targetNodeId, long generation) {
-    return sourceNodeId + "|" + targetNodeId + "|" + generation;
+  private String buildCacheKey(String sourceNodeId, String targetNodeId, long generation, RoutingProfile routingProfile) {
+    return sourceNodeId + "|" + targetNodeId + "|" + generation + "|"
+        + routingProfile.distanceCostMultiplier() + "|"
+        + routingProfile.tollPenalty() + "|"
+        + routingProfile.tollWeightMultiplier() + "|"
+        + routingProfile.fuelCostMultiplier();
   }
 
   /**
