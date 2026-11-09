@@ -49,18 +49,22 @@ public class InventoryController {
 
   @PostMapping
   public ResponseEntity<InventoryRecordDto> setInventory(@RequestBody InventoryRecordDto request) {
-    if (request == null || request.getDepotId() == null || request.getProductId() == null || request.getQuantity() < 0) {
+    if (request == null || request.getDepotId() == null || request.getDepotId().isBlank()
+        || request.getProductId() == null || request.getProductId().isBlank() || request.getQuantity() < 0) {
       throw new BadRequestException("depotId, productId and a non-negative quantity are required");
     }
+    validateDepotId(request.getDepotId());
     inventoryService.setStock(request.getDepotId(), request.getProductId(), request.getQuantity());
     return ResponseEntity.ok(request);
   }
 
   @PostMapping("/replenish")
   public ResponseEntity<InventoryRecordDto> replenish(@RequestBody InventoryRecordDto request) {
-    if (request == null || request.getDepotId() == null || request.getProductId() == null || request.getQuantity() <= 0) {
+    if (request == null || request.getDepotId() == null || request.getDepotId().isBlank()
+        || request.getProductId() == null || request.getProductId().isBlank() || request.getQuantity() <= 0) {
       throw new BadRequestException("depotId, productId and a positive quantity are required");
     }
+    validateDepotId(request.getDepotId());
     // ARTIK ANLIK EKLEMEK YERINE SIMULASYON GOREVI OLUSTURUYORUZ
     this.engine.submitManualReplenishmentRequest(request.getDepotId(), request.getProductId(), request.getQuantity());
     
@@ -70,11 +74,26 @@ public class InventoryController {
 
   @PostMapping("/consume")
   public ResponseEntity<InventoryRecordDto> consume(@RequestBody InventoryRecordDto request) {
-    if (request == null || request.getDepotId() == null || request.getProductId() == null || request.getQuantity() <= 0) {
+    if (request == null || request.getDepotId() == null || request.getDepotId().isBlank()
+        || request.getProductId() == null || request.getProductId().isBlank() || request.getQuantity() <= 0) {
       throw new BadRequestException("depotId, productId and a positive quantity are required");
     }
-    inventoryService.consumeManually(request.getDepotId(), request.getProductId(), request.getQuantity());
+    validateDepotId(request.getDepotId());
+    try {
+      inventoryService.consumeManually(request.getDepotId(), request.getProductId(), request.getQuantity());
+    } catch (IllegalStateException | IllegalArgumentException ex) {
+      throw new BadRequestException(ex.getMessage());
+    }
     request.setQuantity(inventoryService.getTotalStock(request.getDepotId(), request.getProductId()));
     return ResponseEntity.ok(request);
+  }
+
+  private void validateDepotId(String depotId) {
+    if (engine.getDepots() != null && !engine.getDepots().isEmpty()) {
+      boolean exists = engine.getDepots().stream().anyMatch(d -> d.getId().equals(depotId));
+      if (!exists) {
+        throw new BadRequestException("Unknown depotId: " + depotId);
+      }
+    }
   }
 }

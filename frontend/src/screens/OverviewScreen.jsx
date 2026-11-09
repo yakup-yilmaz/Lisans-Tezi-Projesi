@@ -26,7 +26,7 @@ function progressByCategory(products, orders) {
     if (!bucket.size) bucket.add('documents')
     for (const key of bucket) {
       totals[key] += 1
-      if (order.status === 'COMPLETED') completed[key] += 1
+      if (order.status === 'COMPLETED' || order.status === 'FULFILLED_FROM_MICRO') completed[key] += 1
     }
   }
 
@@ -111,10 +111,10 @@ const OverviewSidebar = memo(function OverviewSidebar({ progress, nodes, edges, 
           <span className="text-[11px] text-slate-500">{vehicles.length} arac</span>
         </div>
         <div className="space-y-1">
-          <FleetDistributionBar label="Aktif"    count={enRoute + loading} total={total} icon="🚛" />
-          <FleetDistributionBar label="Bosta"    count={idle}              total={total} icon="🅿" />
-          <FleetDistributionBar label="Yukleme"  count={loading}           total={total} icon="📦" />
-          <FleetDistributionBar label="Donus"    count={returning}         total={total} icon="↩" />
+          <FleetDistributionBar label="Aktif (Yolda)" count={enRoute}     total={total} icon="🚛" />
+          <FleetDistributionBar label="Bosta"         count={idle}        total={total} icon="🅿" />
+          <FleetDistributionBar label="Yukleme"       count={loading}     total={total} icon="📦" />
+          <FleetDistributionBar label="Donus"         count={returning}   total={total} icon="↩" />
         </div>
       </div>
 

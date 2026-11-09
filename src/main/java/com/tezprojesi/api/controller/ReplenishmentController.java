@@ -86,10 +86,25 @@ public class ReplenishmentController {
 
   @PostMapping
   public ResponseEntity<ReplenishmentDto> createManualRequest(@RequestBody ReplenishmentRequestDto request) {
-    if (request == null || request.getSourceDepotId() == null || request.getTargetDepotId() == null || request.getItems() == null || request.getItems().isEmpty()) {
+    if (request == null || request.getSourceDepotId() == null || request.getSourceDepotId().isBlank()
+        || request.getTargetDepotId() == null || request.getTargetDepotId().isBlank()
+        || request.getItems() == null || request.getItems().isEmpty()) {
       throw new BadRequestException("sourceDepotId, targetDepotId and items are required");
     }
+    if (request.getSourceDepotId().equals(request.getTargetDepotId())) {
+      throw new BadRequestException("sourceDepotId and targetDepotId must be different");
+    }
+    if (simulationEngine.getDepots() != null && !simulationEngine.getDepots().isEmpty()) {
+      boolean targetExists = simulationEngine.getDepots().stream()
+          .anyMatch(d -> d.getId().equals(request.getTargetDepotId()));
+      if (!targetExists) {
+        throw new BadRequestException("Unknown targetDepotId: " + request.getTargetDepotId());
+      }
+    }
     List<OrderLine> items = request.getItems().stream().map(item -> {
+      if (item == null || item.getProductId() == null || item.getProductId().isBlank() || item.getQuantity() <= 0) {
+        throw new BadRequestException("Each item requires a valid productId and positive quantity");
+      }
       double unitVolume = productCatalogService.findById(item.getProductId())
           .orElseThrow(() -> new BadRequestException("Unknown product: " + item.getProductId()))
           .getUnitVolume();

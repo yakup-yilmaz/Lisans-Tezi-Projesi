@@ -50,12 +50,29 @@ public class VehicleController {
 
   @PostMapping
   public ResponseEntity<VehicleDto> createVehicle(@RequestBody VehicleDto request) {
-    if (request == null || request.getId() == null || request.getLocationNodeId() == null) {
+    if (request == null || request.getId() == null || request.getId().isBlank()
+        || request.getLocationNodeId() == null || request.getLocationNodeId().isBlank()) {
       throw new BadRequestException("id and locationNodeId are required");
     }
-    Set<ProductCategory> categories = request.getSupportedCategories() == null || request.getSupportedCategories().isEmpty()
-        ? Set.of(ProductCategory.GENERAL)
-        : request.getSupportedCategories().stream().map(category -> ProductCategory.valueOf(category.toUpperCase())).collect(Collectors.toSet());
+    if (request.getCapacityVolume() <= 0) {
+      throw new BadRequestException("capacityVolume must be positive");
+    }
+    if (simulationEngine.getGraph() != null && !simulationEngine.getGraph().getAllNodes().isEmpty()
+        && !simulationEngine.getGraph().hasNode(request.getLocationNodeId())) {
+      throw new BadRequestException("Unknown locationNodeId: " + request.getLocationNodeId());
+    }
+    Set<ProductCategory> categories;
+    Set<VehicleCapability> capabilities;
+    try {
+      categories = request.getSupportedCategories() == null || request.getSupportedCategories().isEmpty()
+          ? Set.of(ProductCategory.GENERAL)
+          : request.getSupportedCategories().stream().map(category -> ProductCategory.valueOf(category.trim().toUpperCase())).collect(Collectors.toSet());
+      capabilities = request.getCapabilities() == null || request.getCapabilities().isEmpty()
+          ? Set.of(VehicleCapability.STANDARD_BOX)
+          : request.getCapabilities().stream().map(value -> VehicleCapability.valueOf(value.trim().toUpperCase())).collect(Collectors.toSet());
+    } catch (IllegalArgumentException ex) {
+      throw new BadRequestException("Invalid category or capability: " + ex.getMessage());
+    }
     Vehicle vehicle = new Vehicle(
         request.getId(),
         request.getCapacityVolume(),
@@ -63,9 +80,7 @@ public class VehicleController {
         request.getFuelType() == null ? "DIESEL" : request.getFuelType(),
         request.getCostPerKm(),
         categories,
-        request.getCapabilities() == null || request.getCapabilities().isEmpty()
-            ? Set.of(VehicleCapability.STANDARD_BOX)
-            : request.getCapabilities().stream().map(value -> VehicleCapability.valueOf(value.toUpperCase())).collect(Collectors.toSet()),
+        capabilities,
         request.getPlateNumber() == null ? request.getId() + "-PLATE" : request.getPlateNumber(),
         request.getDriverName() == null ? "Unassigned" : request.getDriverName(),
         request.getMinimumDepartureLoadFraction(),

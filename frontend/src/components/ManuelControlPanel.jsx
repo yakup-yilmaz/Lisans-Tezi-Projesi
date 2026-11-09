@@ -15,26 +15,31 @@ export function ManuelControlPanel({ nodes, products, inventory, replenishments 
     [nodes]
   );
 
+  const effectiveDepot = selectedDepot || microDepots[0] || 'M1';
+  const effectiveProduct = selectedProduct || products[0]?.id || '';
+
   const currentStock = useMemo(() => {
-    const item = inventory.find(i => i.depotId === selectedDepot && i.productId === selectedProduct);
+    if (!effectiveProduct) return 0;
+    const item = inventory.find(i => i.depotId === effectiveDepot && i.productId === effectiveProduct);
     return item ? item.quantity : 0;
-  }, [inventory, selectedDepot, selectedProduct]);
+  }, [inventory, effectiveDepot, effectiveProduct]);
 
   // Yeni: Yoldaki (bekleyen veya yolda olan) miktar
   const incomingStock = useMemo(() => {
+    if (!effectiveProduct) return 0;
     return replenishments
-      .filter(r => r.status !== 'COMPLETED' && r.targetDepotId === selectedDepot)
+      .filter(r => r.status !== 'COMPLETED' && r.targetDepotId === effectiveDepot)
       .flatMap(r => r.items || [])
-      .filter(item => item.productId === selectedProduct)
+      .filter(item => item.productId === effectiveProduct)
       .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-  }, [replenishments, selectedDepot, selectedProduct]);
+  }, [replenishments, effectiveDepot, effectiveProduct]);
 
   const maxCapacity = 100;
   const totalStockProjection = currentStock + incomingStock;
   const isCapacityCritical = totalStockProjection >= maxCapacity;
 
   const addToReplenishList = () => {
-    if (quantity <= 0) return;
+    if (quantity <= 0 || !effectiveProduct) return;
     
     // Ön Kontrol: Eklenirse 100'ü geçecek mi?
     if (totalStockProjection + Number(quantity) > maxCapacity) {
@@ -45,12 +50,12 @@ export function ManuelControlPanel({ nodes, products, inventory, replenishments 
       return;
     }
 
-    const exists = replenishList.some(item => item.depotId === selectedDepot && item.productId === selectedProduct);
+    const exists = replenishList.some(item => item.depotId === effectiveDepot && item.productId === effectiveProduct);
     if (exists) {
       setLocalFeedback({ message: 'Bu depo ve ürün zaten listede var.', tone: 'error' });
       return;
     }
-    setReplenishList([...replenishList, { depotId: selectedDepot, productId: selectedProduct, quantity: Number(quantity) }]);
+    setReplenishList([...replenishList, { depotId: effectiveDepot, productId: effectiveProduct, quantity: Number(quantity) }]);
     setLocalFeedback({ message: 'Listeye eklendi.', tone: 'success' });
     setTimeout(() => setLocalFeedback({ message: '', tone: 'info' }), 2000);
   };
@@ -65,14 +70,18 @@ export function ManuelControlPanel({ nodes, products, inventory, replenishments 
 
     try {
       if (isConsume) {
+        if (!effectiveProduct) {
+          setLocalFeedback({ message: 'Lütfen bir ürün seçin.', tone: 'error' });
+          return;
+        }
         if (quantity > currentStock) {
           setLocalFeedback({ message: 'Yetersiz stok!', tone: 'error' });
           return;
         }
         await doAction('Manuel Tüketim', () => 
           api.post('/api/inventory/consume', {
-            depotId: selectedDepot,
-            productId: selectedProduct,
+            depotId: effectiveDepot,
+            productId: effectiveProduct,
             quantity: Number(quantity)
           })
         );
@@ -82,17 +91,20 @@ export function ManuelControlPanel({ nodes, products, inventory, replenishments 
           return;
         }
         
-        // doAction içindeki hata yakalamayı bypass edip burada yakalamak için doğrudan çağrı yapıyoruz
-        // veya doAction'ın hata fırlatmasını bekliyoruz.
-        // Backend'deki BadRequestException'ı yakalayıp ekranda göstermek için:
-        for (const item of replenishList) {
-          try {
-            await api.post('/api/inventory/replenish', item);
-          } catch (err) {
-             const msg = err.response?.data?.message || err.message;
-             setLocalFeedback({ message: `HATA: ${msg}`, tone: 'error' });
-             return; // İlk hatada dur
+        let failedMessage = '';
+        await doAction('Manuel İkmal Görevi', async () => {
+          for (const item of replenishList) {
+            try {
+              await api.post('/api/inventory/replenish', item);
+            } catch (err) {
+              failedMessage = err.response?.data?.message || err.message;
+              throw err;
+            }
           }
+        });
+        if (failedMessage) {
+          setLocalFeedback({ message: `HATA: ${failedMessage}`, tone: 'error' });
+          return;
         }
         setReplenishList([]);
       }
@@ -100,7 +112,7 @@ export function ManuelControlPanel({ nodes, products, inventory, replenishments 
       setLocalFeedback({ message: 'İşlem başarıyla gerçekleşti.', tone: 'success' });
       setTimeout(() => setLocalFeedback({ message: '', tone: 'info' }), 4000);
     } catch (err) {
-      setLocalFeedback({ message: err.message, tone: 'error' });
+      setLocalFeedback({ message: err.response?.data?.message || err.message, tone: 'error' });
     }
   };
 
@@ -138,13 +150,13 @@ export function ManuelControlPanel({ nodes, products, inventory, replenishments 
         <div className="grid grid-cols-2 gap-4">
           <Select 
             label="Mikro Depo Seçimi" 
-            value={selectedDepot} 
+            value={effectiveDepot} 
             onChange={setSelectedDepot} 
             options={microDepots} 
           />
           <Select 
             label="Ürün Kategorisi" 
-            value={selectedProduct} 
+            value={effectiveProduct} 
             onChange={setSelectedProduct} 
             options={products.map(p => p.id)} 
           />

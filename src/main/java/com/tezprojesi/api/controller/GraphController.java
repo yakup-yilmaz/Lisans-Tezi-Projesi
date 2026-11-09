@@ -120,7 +120,12 @@ public class GraphController {
     return ResponseEntity.ok(toEdgeDto(cityGraph.getEdge(request.getFromNodeId(), request.getToNodeId())));
   }
 
-  @PutMapping("/edges/traffic")
+  @GetMapping("/traffic")
+  public ResponseEntity<List<EdgeDto>> listTraffic() {
+    return listEdges();
+  }
+
+  @PutMapping({"/edges/traffic", "/traffic"})
   public ResponseEntity<EdgeDto> updateTraffic(@RequestBody TrafficUpdateRequest request) {
     if (request == null || isBlank(request.getFromNodeId()) || isBlank(request.getToNodeId())) {
       throw new BadRequestException("fromNodeId and toNodeId are required");
@@ -136,7 +141,7 @@ public class GraphController {
     return ResponseEntity.ok(toEdgeDto(cityGraph.getEdge(request.getFromNodeId(), request.getToNodeId())));
   }
 
-  @PutMapping("/edges/toll")
+  @PutMapping({"/edges/toll", "/tolls"})
   public ResponseEntity<EdgeDto> updateToll(@RequestBody TollUpdateRequest request) {
     if (request == null || isBlank(request.getFromNodeId()) || isBlank(request.getToNodeId())) {
       throw new BadRequestException("fromNodeId and toNodeId are required");

@@ -84,6 +84,9 @@ public class SimulationController {
 
   @PostMapping("/advance")
   public ResponseEntity<Void> advance(@RequestParam(defaultValue = "60") long ticks) {
+    if (ticks <= 0) {
+      throw new BadRequestException("ticks must be positive");
+    }
     if (simulationEngine.isRunning()) {
       return ResponseEntity.badRequest().build();
     }
@@ -201,7 +204,9 @@ public class SimulationController {
   @GetMapping("/summary")
   public ResponseEntity<SimulationSummaryDto> summary() {
     SimulationSummaryDto dto = new SimulationSummaryDto();
-    List<VehicleReportService.TripRecord> records = vehicleReportService.getTripRecords();
+    List<VehicleReportService.TripRecord> records = vehicleReportService.getTripRecords().stream()
+        .filter(r -> !"RETURN".equals(r.routeType()) && !"POSITIONING".equals(r.routeType()))
+        .toList();
     dto.setTotalTrips(records.size());
     double totalActualCost = records.stream().mapToDouble(VehicleReportService.TripRecord::cost).sum();
     dto.setTotalCost(totalActualCost);
@@ -223,19 +228,17 @@ public class SimulationController {
       double factor = "ELECTRIC".equalsIgnoreCase(r.fuelType()) ? 0.0 : ("GASOLINE".equalsIgnoreCase(r.fuelType()) ? 0.7 : 0.8);
       double currentTripCo2 = r.distanceKm() * factor;
       totalCo2 += currentTripCo2;
-      // Calculate what would have been emitted if it were Diesel (Baseline)
-      if (factor == 0.0) {
-        savedCo2 += (r.distanceKm() * 0.8);
-      }
+      // Calculate what would have been emitted if it were Diesel (Baseline = 0.8 kg/km)
+      savedCo2 += Math.max(0.0, r.distanceKm() * (0.8 - factor));
     }
     dto.setCo2Emissions(totalCo2);
     dto.setCo2Saved(savedCo2);
 
     dto.setMultiStopTrips(records.stream().filter(record -> record.stopCount() > 1).count());
-    dto.setSingleStopTrips(records.stream().filter(record -> record.stopCount() <= 1).count());
+    dto.setSingleStopTrips(records.stream().filter(record -> record.stopCount() == 1).count());
     
     double multiCost = records.stream().filter(record -> record.stopCount() > 1).mapToDouble(VehicleReportService.TripRecord::cost).average().orElse(0.0);
-    double singleCost = records.stream().filter(record -> record.stopCount() <= 1).mapToDouble(VehicleReportService.TripRecord::cost).average().orElse(0.0);
+    double singleCost = records.stream().filter(record -> record.stopCount() == 1).mapToDouble(VehicleReportService.TripRecord::cost).average().orElse(0.0);
     dto.setMultiStopAverageCost(multiCost);
     dto.setSingleStopAverageCost(singleCost);
 

@@ -21,7 +21,7 @@ const tabs = [
   { id: 'fleet', label: 'Canli Izleme & Filo', icon: '⬙' },
 ]
 
-const SIMULATION_MS_PER_TICK = 500
+const SIMULATION_MS_PER_TICK = 1000
 const SNAPSHOT_REFRESH_MS = 1000
 
 const EMPTY_STATUS = {
@@ -36,6 +36,10 @@ const EMPTY_STATUS = {
 
 const EMPTY_SUMMARY = {
   totalCost: 0,
+  totalFuelCost: 0,
+  totalTollCost: 0,
+  totalLaborCost: 0,
+  totalPenaltyCost: 0,
   totalOperationTicks: 0,
   vehicleUtilizationPercentage: 0,
   averageDeliveryTicks: 0,
@@ -95,11 +99,12 @@ function buildMicroAlert(order) {
 
 function buildCapacityDispatchAlert(dr) {
   const vid = dr.vehicleId || 'ARAC'
+  const pct = ((dr.loadFraction || 0) * 100).toFixed(0)
   return {
     id: `cap-${vid}-${dr.referenceId || 'ref'}`,
-    title: `Dikkat: ${vid} %50+ kapasite`,
+    title: `Dikkat: ${vid} (%${pct} doluluk)`,
     subtitle: 'Cikis icin onay bekleniyor',
-    meta: `Doluluk: ${((dr.loadFraction || 0) * 100).toFixed(0)}% · WAITING_FOR_APPROVAL`,
+    meta: `Doluluk: ${pct}% · WAITING_FOR_APPROVAL`,
   }
 }
 
@@ -114,12 +119,12 @@ export default function App() {
   const [microAlerts, setMicroAlerts] = useState([])
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const [, setCurrentTimeMs] = useState(() => Date.now())
   const [lastStatusSyncAt, setLastStatusSyncAt] = useState(() => Date.now())
   const seenOrderIds = useRef(new Set())
   const seenCapacityAlertKeys = useRef(new Set())
   const seenAssignmentsRef = useRef(new Set())
   const simDataRef = useRef(INITIAL_SIM_DATA)
+  const isFetchingRef = useRef(false)
   
   const [toasts, setToasts] = useState([])
   const removeToast = useCallback((id) => setToasts(t => t.filter(x => x.id !== id)), [])
@@ -158,7 +163,11 @@ export default function App() {
     setMicroAlerts((current) => [buildMicroAlert(order), ...current].slice(0, 6))
   }, [])
 
-  const loadAll = useCallback(async (period = reportPeriod) => {
+  const loadAll = useCallback(async (period = reportPeriod, force = false) => {
+    if (isFetchingRef.current && !force) {
+      return
+    }
+    isFetchingRef.current = true
     try {
       const [
         statusResponse,
@@ -226,7 +235,6 @@ export default function App() {
       if (shouldResyncClock) {
         const now = Date.now()
         setLastStatusSyncAt(now)
-        setCurrentTimeMs(now)
       }
 
       simDataRef.current = nextSimData
@@ -235,7 +243,7 @@ export default function App() {
       setMicroAlerts((current) => {
         const nextAlerts = []
         for (const dr of nextSimData.dispatchReadiness || []) {
-          if (!dr.capacityApprovalPending || !dr.vehicleId) {
+          if ((!dr.capacityApprovalPending && !dr.awaitingApproval) || !dr.vehicleId) {
             continue
           }
           const dedupeKey = `${dr.vehicleId}-${dr.referenceId || ''}`
@@ -283,6 +291,8 @@ export default function App() {
       setError('')
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Veriler alinamadi')
+    } finally {
+      isFetchingRef.current = false
     }
   }, [reportPeriod])
 
@@ -291,16 +301,14 @@ export default function App() {
   }, [simData])
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      return undefined
+    }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- polling fetch: state is set after the async response
-    void loadAll(reportPeriod)
-    const timer = window.setInterval(() => void loadAll(reportPeriod), SNAPSHOT_REFRESH_MS)
+    void loadAll(reportPeriod, true)
+    const timer = window.setInterval(() => void loadAll(reportPeriod, false), SNAPSHOT_REFRESH_MS)
     return () => window.clearInterval(timer)
-  }, [loadAll, reportPeriod])
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setCurrentTimeMs(Date.now()), SIMULATION_MS_PER_TICK)
-    return () => window.clearInterval(timer)
-  }, [])
+  }, [isAuthenticated, loadAll, reportPeriod])
 
   const progress = useMemo(
     () => (status.maxTicks > 0 ? Math.min(100, Math.round((status.currentTick / status.maxTicks) * 100)) : 0),
@@ -334,11 +342,11 @@ export default function App() {
       await fn()
       setMessage(label)
       setError('')
-      await loadAll()
+      await loadAll(reportPeriod, true)
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Islem basarisiz')
     }
-  }, [loadAll])
+  }, [loadAll, reportPeriod])
 
   const loadRoute = useCallback(() =>
     doAction('Rota onizlemesi hazirlandi', async () => {
@@ -370,7 +378,15 @@ export default function App() {
     doAction('Simulasyon durduruldu', () => api.post('/api/simulation/stop')), [doAction])
   
   const handleReset = useCallback(() =>
-    doAction('Simulasyon sifirlandi', () => api.post('/api/simulation/reset')), [doAction])
+    doAction('Simulasyon sifirlandi', async () => {
+      await api.post('/api/simulation/reset')
+      seenOrderIds.current.clear()
+      seenCapacityAlertKeys.current.clear()
+      seenAssignmentsRef.current.clear()
+      setMicroAlerts([])
+      setToasts([])
+      setRoutePreview(null)
+    }), [doAction])
 
   const shared = {
     api,

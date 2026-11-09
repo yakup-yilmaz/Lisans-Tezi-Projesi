@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-const MOTION_INTERVAL_MS = 10
-const BACKGROUND_HREF = '/map-background.svg'
+const MOTION_INTERVAL_MS = 20
 
 function edgePairKey(fromNodeId, toNodeId) {
   return [fromNodeId, toNodeId].sort().join('::')
@@ -21,56 +20,62 @@ function project(x, y) {
   }
 }
 
-// Organik Bézier eğrisi — her yol segmenti hafif kıvrımlı
-function getEdgePath(from, to) {
-  const dx = to.x - from.x
-  const dy = to.y - from.y
+// Kanonik kontrol noktası — A->B ve B->A yönlerinde birebir aynı Bézier eğrisini üretir
+function getEdgeControlPoint(from, to) {
+  const isCanonical = from.x < to.x || (from.x === to.x && from.y <= to.y)
+  const pA = isCanonical ? from : to
+  const pB = isCanonical ? to : from
+  const dx = pB.x - pA.x
+  const dy = pB.y - pA.y
   const dist = Math.sqrt(dx * dx + dy * dy)
-  if (dist < 1) return `M ${from.x} ${from.y} L ${to.x} ${to.y}`
+  if (dist < 1) {
+    return { cx: (from.x + to.x) / 2, cy: (from.y + to.y) / 2, dist }
+  }
 
-  // Deterministik tohum — aynı iki nokta her zaman aynı eğriyi üretir
-  const seed = Math.abs(Math.sin(from.x * 12.9898 + from.y * 78.233 + to.x * 37.719 + to.y * 4.1414)) * 43758.5453
+  const seed = Math.abs(Math.sin(pA.x * 12.9898 + pA.y * 78.233 + pB.x * 37.719 + pB.y * 4.1414)) * 43758.5453
   const seedFrac = seed - Math.floor(seed)
   const direction = seedFrac > 0.5 ? 1 : -1
   const curvature = 0.08 + seedFrac * 0.14 // 0.08–0.22 oranında eğrilik
 
-  // Orta nokta
-  const mx = (from.x + to.x) / 2
-  const my = (from.y + to.y) / 2
-
-  // Dik doğrultudaki birim vektör
+  const mx = (pA.x + pB.x) / 2
+  const my = (pA.y + pB.y) / 2
   const px = -dy / dist
   const py = dx / dist
-
   const offset = dist * curvature * direction
-  const cx = mx + px * offset
-  const cy = my + py * offset
 
+  return {
+    cx: mx + px * offset,
+    cy: my + py * offset,
+    dist,
+  }
+}
+
+// Quadratic Bézier eğrisi üzerindeki t ∈ [0, 1] noktasını hesaplar
+function getQuadraticBezierPoint(from, to, t) {
+  const { cx, cy, dist } = getEdgeControlPoint(from, to)
+  if (dist < 1) {
+    return {
+      x: from.x + (to.x - from.x) * t,
+      y: from.y + (to.y - from.y) * t,
+    }
+  }
+  const oneMinusT = 1 - t
+  return {
+    x: oneMinusT * oneMinusT * from.x + 2 * oneMinusT * t * cx + t * t * to.x,
+    y: oneMinusT * oneMinusT * from.y + 2 * oneMinusT * t * cy + t * t * to.y,
+  }
+}
+
+// Organik Bézier eğrisi — her yol segmenti hafif kıvrımlı
+function getEdgePath(from, to) {
+  const { cx, cy, dist } = getEdgeControlPoint(from, to)
+  if (dist < 1) return `M ${from.x} ${from.y} L ${to.x} ${to.y}`
   return `M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`
 }
 
 // Bézier eğrisinin orta noktası (etiket yerleştirme için)
 function getEdgeMidpoint(from, to) {
-  const dx = to.x - from.x
-  const dy = to.y - from.y
-  const dist = Math.sqrt(dx * dx + dy * dy)
-  if (dist < 1) return { x: from.x, y: from.y }
-
-  const seed = Math.abs(Math.sin(from.x * 12.9898 + from.y * 78.233 + to.x * 37.719 + to.y * 4.1414)) * 43758.5453
-  const seedFrac = seed - Math.floor(seed)
-  const direction = seedFrac > 0.5 ? 1 : -1
-  const curvature = 0.08 + seedFrac * 0.14
-
-  const mx = (from.x + to.x) / 2
-  const my = (from.y + to.y) / 2
-  const px = -dy / dist
-  const py = dx / dist
-  const offset = dist * curvature * direction
-
-  // Quadratic Bézier t=0.5 → (from + 2*control + to) / 4
-  const cx = mx + px * offset
-  const cy = my + py * offset
-  return { x: (from.x + 2 * cx + to.x) / 4, y: (from.y + 2 * cy + to.y) / 4 }
+  return getQuadraticBezierPoint(from, to, 0.5)
 }
 
 // Çoklu düğüm üzerinden kıvrımlı yol oluşturma
@@ -154,16 +159,19 @@ export function MapCanvas({
   vehicleAssignments = [],
   routePreview,
   compact = false,
-  simulationMsPerTick = 500,
+  simulationMsPerTick = 1000,
   lastStatusSyncAt = 0,
   status,
   onSelectMicroDepotNode,
   onSelectVehicle,
-  transform = { x: 0, y: 0, k: 1 },
+  transform,
   setTransform,
   selectedVehicleId,
 }) {
   const [motionTick, setMotionTick] = useState(0)
+  const [internalTransform, setInternalTransform] = useState({ x: 0, y: 0, k: 1 })
+  const activeTransform = transform ?? internalTransform
+  const updateTransform = setTransform ?? setInternalTransform
   const isDragging = useRef(false)
   const dragStart = useRef({ x: 0, y: 0 })
 
@@ -184,18 +192,18 @@ export function MapCanvas({
   const handleWheel = (e) => {
     const zoomSensitivity = 0.001
     const delta = -e.deltaY * zoomSensitivity
-    setTransform((prev) => ({ ...prev, k: Math.min(Math.max(0.3, prev.k + delta), 4) }))
+    updateTransform((prev) => ({ ...prev, k: Math.min(Math.max(0.3, prev.k + delta), 4) }))
   }
 
   const handlePointerDown = (e) => {
     isDragging.current = true
-    dragStart.current = { x: e.clientX - transform.x, y: e.clientY - transform.y }
+    dragStart.current = { x: e.clientX - activeTransform.x, y: e.clientY - activeTransform.y }
     e.currentTarget.setPointerCapture(e.pointerId)
   }
 
   const handlePointerMove = (e) => {
     if (!isDragging.current) return
-    setTransform((prev) => ({ ...prev, x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y }))
+    updateTransform((prev) => ({ ...prev, x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y }))
   }
 
   const handlePointerUp = (e) => {
@@ -266,7 +274,7 @@ export function MapCanvas({
         fromNodeId &&
         toNodeId &&
         fromNodeId !== toNodeId &&
-        vehicle.status === 'EN_ROUTE',
+        (vehicle.status === 'EN_ROUTE' || vehicle.status === 'RETURNING'),
       )
 
       if (isTraveling) {
@@ -361,20 +369,23 @@ export function MapCanvas({
   }, [routeEdges, safeEdges])
 
   useEffect(() => {
+    if (!status?.running) {
+      return undefined
+    }
     const timer = window.setInterval(
-      () => setMotionTick((value) => (value + 1) % INTERPOLATION_STEPS),
+      () => setMotionTick((value) => Math.min(value + 1, INTERPOLATION_STEPS)),
       MOTION_INTERVAL_MS,
     )
 
     return () => window.clearInterval(timer)
-  }, [INTERPOLATION_STEPS])
+  }, [INTERPOLATION_STEPS, status?.running])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- restart interpolation phase when a new backend snapshot arrives
     setMotionTick(0)
   }, [lastStatusSyncAt, status?.currentTick])
 
-  const smoothTickFraction = status?.running ? motionTick / INTERPOLATION_STEPS : 0
+  const smoothTickFraction = status?.running ? Math.min(1, motionTick / INTERPOLATION_STEPS) : 0
 
   // Grid Generation Labels (A1-Z9)
   const gridCells = useMemo(() => {
@@ -453,7 +464,7 @@ export function MapCanvas({
           
           <rect width="1100" height="1000" fill="#05080c" opacity="0.4" />
           
-          <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.k})`}>
+          <g transform={`translate(${activeTransform.x}, ${activeTransform.y}) scale(${activeTransform.k})`}>
             {/* The Isometric Ground Grid */}
             <g className="iso-grid">
                {gridCells.map(c => {
@@ -558,7 +569,7 @@ export function MapCanvas({
             {/* Path Assignments (Vehicle Intent) — Kıvrımlı yol */}
             {safeAssignments.map((assignment) => {
               const vehicle = safeVehicles.find((item) => item.id === assignment.vehicleId)
-              if (!vehicle || vehicle.status !== 'EN_ROUTE') return null
+              if (!vehicle || (vehicle.status !== 'EN_ROUTE' && vehicle.status !== 'RETURNING')) return null
               const pathNodeIds = [assignment.currentFromNodeId || vehicle.locationNodeId, ...(assignment.remainingNodeIds || [])]
               const pathNodes = pathNodeIds.map(id => nodeMap[id]).filter(Boolean)
               if (pathNodes.length < 2) return null
@@ -584,6 +595,7 @@ export function MapCanvas({
                       onSelectMicroDepotNode?.(node)
                     }}
                     style={{ cursor: node.type === 'MICRO_DEPOT' ? 'pointer' : 'default' }}>
+                    <title>{`${node.id} (${node.type})`}</title>
                     {renderNodeGlyph(node, highlighted)}
                   </g>
                   {showLabel && (
@@ -618,7 +630,13 @@ export function MapCanvas({
               if (!node) return null
 
               const assignment = assignmentByVehicleId.get(vehicle.id)
-              const isTraveling = assignment && assignment.currentToNodeId !== assignment.currentFromNodeId && vehicle.status === 'EN_ROUTE'
+              const isTraveling = Boolean(
+                assignment &&
+                assignment.currentToNodeId &&
+                assignment.currentFromNodeId &&
+                assignment.currentToNodeId !== assignment.currentFromNodeId &&
+                (vehicle.status === 'EN_ROUTE' || vehicle.status === 'RETURNING')
+              )
               const fromOrig = nodeMap[assignment?.currentFromNodeId] || nodeMap[vehicle.locationNodeId]
               const toOrig = nodeMap[assignment?.currentToNodeId] || node
               
@@ -628,11 +646,10 @@ export function MapCanvas({
               const remainingTicks = Number(assignment?.segmentRemainingTicks || 0)
               const progress = isTraveling ? clamp((totalTicks - remainingTicks + smoothTickFraction) / totalTicks, 0, 1) : 0
               
-              const rawPosX = fromOrig.x + (toOrig.x - fromOrig.x) * progress
-              const rawPosY = fromOrig.y + (toOrig.y - fromOrig.y) * progress
               const offset = vehicleOffsets[vehicle.id] || { x: 0, y: 0 }
-              
-              const p = project(rawPosX + (isTraveling ? 0 : offset.x), rawPosY + (isTraveling ? 0 : offset.y))
+              const p = isTraveling
+                ? getQuadraticBezierPoint(project(fromOrig.x, fromOrig.y), project(toOrig.x, toOrig.y), progress)
+                : project(fromOrig.x + offset.x, fromOrig.y + offset.y)
               const isSelected = selectedVehicleId === vehicle.id
               
               // Status Colors
@@ -642,6 +659,7 @@ export function MapCanvas({
               const statusColor = isProcessing ? "#ffea00" : isMoving ? "#39ff14" : isAtBase ? "#00d1ff" : "#00d1ff"
 
               const vehicleIndex = safeVehicles.findIndex(v => v.id === vehicle.id)
+              const loadPct = vehicle.capacityVolume ? Math.round(((Number(vehicle.currentLoad) || 0) / Number(vehicle.capacityVolume)) * 100) : 0
 
               return (
                 <g 
@@ -653,6 +671,7 @@ export function MapCanvas({
                   }}
                   style={{ cursor: 'pointer' }}
                 >
+                   <title>{`${vehicle.id} (${vehicle.status}) · Doluluk: %${loadPct}`}</title>
                    {/* Combined Marker and Number */}
                    {vehicle.dedicatedManual ? (
                      <rect x="-12" y="-12" width={isSelected ? "24" : "24"} height={isSelected ? "24" : "24"} rx="4" fill={statusColor} stroke="#05080c" strokeWidth="2" />
@@ -677,7 +696,7 @@ export function MapCanvas({
 
           {/* ── Harita Lejantı ── */}
           <g transform="translate(20, 870)">
-            <rect x="0" y="0" width="220" height="120" rx="12"
+            <rect x="0" y="0" width="310" height="120" rx="12"
               fill="rgba(5, 8, 16, 0.88)" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
             <text x="14" y="20" fill="rgba(255,255,255,0.7)" fontSize="9" fontWeight="800"
               fontFamily="var(--text-tech)" letterSpacing="0.12em">HARİTA LEJANTI</text>
@@ -702,20 +721,20 @@ export function MapCanvas({
             <text x="44" y="87" fill="#94a3b8" fontSize="8" fontFamily="var(--text-tech)">Normal Yol</text>
 
             {/* Araç durumları */}
-            <circle cx="210" cy="30" r="4" fill="#00d1ff" />
-            <text x="220" y="33" fill="#94a3b8" fontSize="7" fontFamily="var(--text-tech)">Boşta (Idle)</text>
-            <circle cx="210" cy="45" r="4" fill="#ffea00" />
-            <text x="220" y="48" fill="#94a3b8" fontSize="7" fontFamily="var(--text-tech)">Yükleme/Boşaltma</text>
-            <circle cx="210" cy="60" r="4" fill="#39ff14" />
-            <text x="220" y="63" fill="#94a3b8" fontSize="7" fontFamily="var(--text-tech)">Seyir Halinde</text>
+            <circle cx="165" cy="36" r="4" fill="#00d1ff" />
+            <text x="175" y="39" fill="#94a3b8" fontSize="7.5" fontFamily="var(--text-tech)">Boşta (Idle)</text>
+            <circle cx="165" cy="52" r="4" fill="#ffea00" />
+            <text x="175" y="55" fill="#94a3b8" fontSize="7.5" fontFamily="var(--text-tech)">Yükleme / Boşaltma</text>
+            <circle cx="165" cy="68" r="4" fill="#39ff14" />
+            <text x="175" y="71" fill="#94a3b8" fontSize="7.5" fontFamily="var(--text-tech)">Seyir Halinde</text>
 
             {/* Düğüm açıklamaları */}
-            <circle cx="21" cy="102" r="5" fill="#ffb800" />
-            <text x="30" y="105" fill="#64748b" fontSize="7" fontFamily="var(--text-tech)">Ana Depo</text>
-            <circle cx="76" cy="102" r="4" fill="#10b981" />
-            <text x="84" y="105" fill="#64748b" fontSize="7" fontFamily="var(--text-tech)">Mikro Depo</text>
-            <rect x="135" y="98" width="8" height="8" rx="2" fill="#00d1ff" />
-            <text x="146" y="105" fill="#64748b" fontSize="7" fontFamily="var(--text-tech)">Manuel Araç</text>
+            <circle cx="21" cy="104" r="5" fill="#ffb800" />
+            <text x="30" y="107" fill="#64748b" fontSize="7.5" fontFamily="var(--text-tech)">Ana Depo</text>
+            <circle cx="95" cy="104" r="4" fill="#10b981" />
+            <text x="104" y="107" fill="#64748b" fontSize="7.5" fontFamily="var(--text-tech)">Mikro Depo</text>
+            <rect x="175" y="100" width="8" height="8" rx="2" fill="#00d1ff" />
+            <text x="187" y="107" fill="#64748b" fontSize="7.5" fontFamily="var(--text-tech)">Manuel Araç</text>
           </g>
         </g>
       </svg>

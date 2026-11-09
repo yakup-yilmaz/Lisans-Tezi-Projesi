@@ -94,8 +94,8 @@ function ScoreBreakdown({ item, showThresholds = false }) {
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px] border-t border-white/[0.05] pt-3">
         <div className="flex flex-col">
-          <span className="text-slate-500 uppercase text-[9px] font-bold tracking-wider">Tahmini Yakıt Maliyeti</span>
-          <span className="text-orange-400 font-bold tabular-nums text-[13px]">{formatMetric(item.routeCost)} ₺</span>
+          <span className="text-slate-500 uppercase text-[9px] font-bold tracking-wider">Tahmini Operasyon Maliyeti</span>
+          <span className="text-orange-400 font-bold tabular-nums text-[13px]">{formatMetric(item.planCost ?? item.routeCost)} ₺</span>
         </div>
         <div className="flex flex-col">
           <span className="text-slate-500 uppercase text-[9px] font-bold tracking-wider">Verimlilik (LES)</span>
@@ -248,7 +248,10 @@ export const MapScreen = memo(function MapScreen({
   )
 
   const microDepotData = useMemo(() => {
-    if (!selectedMicroDepotNode?.id || !inventory.length) return { rows: [], totalM3: 0, categoryDist: [] }
+    const dynamicMaxCap = products.reduce((sum, p) => sum + Number(p?.unitVolume || 0) * 100, 0) || MICRO_DEPOT_CAP_M3
+    if (!selectedMicroDepotNode?.id || !inventory.length) {
+      return { rows: [], totalM3: 0, maxCapacityM3: dynamicMaxCap, categoryDist: [] }
+    }
     const rows = inventory
       .filter((item) => item.depotId === selectedMicroDepotNode.id)
       .map((item) => {
@@ -265,6 +268,7 @@ export const MapScreen = memo(function MapScreen({
         }
       })
     const totalM3 = rows.reduce((s, r) => s + r.lineM3, 0)
+    const maxCapacityM3 = Math.max(dynamicMaxCap, totalM3)
     
     const catMap = {}
     rows.forEach(r => {
@@ -272,7 +276,7 @@ export const MapScreen = memo(function MapScreen({
     })
     const categoryDist = Object.entries(catMap).map(([name, value]) => ({ name, value }))
     
-    return { rows, totalM3, categoryDist }
+    return { rows, totalM3, maxCapacityM3, categoryDist }
   }, [selectedMicroDepotNode, inventory, products])
 
   const catColors = {
@@ -438,7 +442,7 @@ export const MapScreen = memo(function MapScreen({
         {selectedMicroDepotNode && (
           <Card
             title={`Depo Analizi: ${selectedMicroDepotNode.id}`}
-            subtitle={`Kapasite Kullanimi: ${microDepotData.totalM3.toFixed(1)} / ${MICRO_DEPOT_CAP_M3} m³`}
+            subtitle={`Kapasite Kullanimi: ${microDepotData.totalM3.toFixed(1)} / ${microDepotData.maxCapacityM3.toFixed(1)} m³`}
             action={
               <button
                 type="button"
@@ -455,12 +459,12 @@ export const MapScreen = memo(function MapScreen({
                   <div className="space-y-2">
                     <div className="flex justify-between text-[12px]">
                        <span className="text-slate-500 font-bold uppercase tracking-wider">Doluluk Orani</span>
-                       <span className="text-white font-bold">%{Math.round((microDepotData.totalM3 / MICRO_DEPOT_CAP_M3) * 100)}</span>
+                       <span className="text-white font-bold">%{Math.min(100, Math.round((microDepotData.totalM3 / Math.max(1, microDepotData.maxCapacityM3)) * 100))}</span>
                     </div>
                     <div className="h-4 overflow-hidden rounded-full bg-[#1c2230] border border-white/5 p-0.5">
                        <div 
                          className="h-full rounded-full bg-gradient-to-r from-sky-600 to-emerald-500 shadow-[0_0_12px_rgba(14,165,233,0.4)] transition-all duration-700" 
-                         style={{ width: `${Math.max(2, (microDepotData.totalM3 / MICRO_DEPOT_CAP_M3) * 100)}%` }}
+                         style={{ width: `${Math.min(100, Math.max(2, (microDepotData.totalM3 / Math.max(1, microDepotData.maxCapacityM3)) * 100))}%` }}
                        />
                     </div>
                   </div>
@@ -472,7 +476,7 @@ export const MapScreen = memo(function MapScreen({
                      </div>
                      <div className="rounded-[12px] bg-[#111620] p-3 border border-white/5">
                         <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Bos Alan</p>
-                        <p className="text-[18px] font-bold text-sky-400 tabular-nums">{(MICRO_DEPOT_CAP_M3 - microDepotData.totalM3).toFixed(1)} <span className="text-[12px] text-slate-500 font-normal">m³</span></p>
+                        <p className="text-[18px] font-bold text-sky-400 tabular-nums">{Math.max(0, microDepotData.maxCapacityM3 - microDepotData.totalM3).toFixed(1)} <span className="text-[12px] text-slate-500 font-normal">m³</span></p>
                      </div>
                   </div>
                </div>
@@ -640,7 +644,7 @@ export const MapScreen = memo(function MapScreen({
                    Dijkstra bu toplam maliyeti minimize eder.
                  </p>
                  <p>
-                   <span className="text-white font-semibold">Ağır araç çarpanı:</span> Kapasitesi ≥ 25m³ olan araçlar
+                   <span className="text-white font-semibold">Ağır araç çarpanı:</span> Kapasitesi ≥ 60m³ olan araçlar
                    toll ücretini <span className="text-rose-300 font-mono">×1.35</span> çarpanla öder.
                    Bu, küçük araçları paralı yollara, büyük araçları alternatif rotalara yönlendirir.
                  </p>

@@ -12,7 +12,7 @@ const tooltipSt = {
 
 const VehicleCard = memo(function VehicleCard({ vehicle, assignment }) {
   const isActive = vehicle.status !== 'IDLE'
-  const isHeavy = (vehicle.capacityVolume || 0) >= 46
+  const isHeavy = (vehicle.capacityVolume || 0) >= 60
 
   return (
     <div
@@ -211,8 +211,8 @@ export const FleetScreen = memo(function FleetScreen({ vehicles, vehicleAssignme
               <SectionLabel className="mb-3">Operasyonel Kurallar</SectionLabel>
               <div className="space-y-3">
                 {[
-                  { l: 'Doluluk <50%', v: 'Engellendi', d: 'Araçlar %50 doluluğuna ulaşmadan yola çıkmaz.' },
-                  { l: 'Doluluk 50-74%', v: '180 dk', d: 'Maksimum 3 saat bekleme, sonra mevcut yükle çıkar.' },
+                  { l: 'Doluluk <50%', v: '300 dk SLA', d: '5 saat konsolidasyon bekler; aging (600/800/1000) ile operatör onayına düşer.' },
+                  { l: 'Doluluk 50-74%', v: '180 dk SLA', d: 'Maksimum 3 saat bekleme, sonra operatör onayı ile çıkar.' },
                   { l: 'Doluluk ≥75%', v: 'Anlık', d: 'Öncelikli eşik geçildiğinde derhal çıkış yapar.' },
                   { l: 'Max Durak', v: '3', d: 'Sabit kapasite yönetimi için 3 nokta ile sınırlı.' },
                   { l: 'Ölü KM (Deadhead)', v: 'İzole', d: 'Dönüş mesafesi çoklu durak sapma hesabından muaf tutulur.' },
@@ -229,7 +229,7 @@ export const FleetScreen = memo(function FleetScreen({ vehicles, vehicleAssignme
            </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4">
 
 
         <Card title="Seans Operasyon Raporu" subtitle="Simülasyon başlangıcından itibaren operasyon özeti ve finansal analiz.">

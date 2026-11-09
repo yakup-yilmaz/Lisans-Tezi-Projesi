@@ -22,7 +22,7 @@ public final class VehicleMovementService {
     this.currentTick = currentTick;
   }
 
-  private final Map<String, Assignment> assignmentsByVehicle = new HashMap<>();
+  private final Map<String, Assignment> assignmentsByVehicle = new java.util.concurrent.ConcurrentHashMap<>();
   private final EventBus eventBus;
   private final SimulationEventLogService eventLogService;
 
@@ -31,7 +31,7 @@ public final class VehicleMovementService {
     this.eventLogService = Objects.requireNonNull(eventLogService, "eventLogService");
   }
 
-  public void assignRoute(
+  public synchronized void assignRoute(
       String vehicleId,
       String referenceId,
       List<String> plannedNodeIds,
@@ -116,7 +116,7 @@ public final class VehicleMovementService {
     }
   }
 
-  public List<TickResult> tick(List<Vehicle> vehicles, long currentTick, CityGraph graph) {
+  public synchronized List<TickResult> tick(List<Vehicle> vehicles, long currentTick, CityGraph graph) {
     Objects.requireNonNull(graph, "graph");
     List<TickResult> results = new ArrayList<>();
     for (Vehicle vehicle : vehicles) {
@@ -262,11 +262,11 @@ public final class VehicleMovementService {
     return results;
   }
 
-  public boolean hasActiveRoute(String vehicleId) {
+  public synchronized boolean hasActiveRoute(String vehicleId) {
     return assignmentsByVehicle.containsKey(vehicleId);
   }
 
-  public void refreshTravelDurations(CityGraph graph, List<Vehicle> vehicles) {
+  public synchronized void refreshTravelDurations(CityGraph graph, List<Vehicle> vehicles) {
     Objects.requireNonNull(graph, "graph");
     Map<String, Vehicle> vehiclesById = vehicles.stream()
         .collect(java.util.stream.Collectors.toMap(Vehicle::getId, vehicle -> vehicle, (left, right) -> left));
@@ -280,7 +280,7 @@ public final class VehicleMovementService {
     });
   }
 
-  public Optional<String> getCurrentNodeId(String vehicleId) {
+  public synchronized Optional<String> getCurrentNodeId(String vehicleId) {
     Assignment assignment = assignmentsByVehicle.get(vehicleId);
     if (assignment == null) {
       return Optional.empty();
@@ -298,7 +298,7 @@ public final class VehicleMovementService {
     return Optional.ofNullable(assignment.plannedNodeIds().isEmpty() ? null : assignment.plannedNodeIds().get(assignment.plannedNodeIds().size() - 1));
   }
 
-  public List<AssignmentSnapshot> getActiveAssignments() {
+  public synchronized List<AssignmentSnapshot> getActiveAssignments() {
     return assignmentsByVehicle.entrySet().stream()
         .map(entry -> {
           Assignment assignment = entry.getValue();
@@ -506,7 +506,7 @@ public final class VehicleMovementService {
     return List.copyOf(remaining);
   }
 
-  public void reset() {
+  public synchronized void reset() {
     assignmentsByVehicle.clear();
   }
 

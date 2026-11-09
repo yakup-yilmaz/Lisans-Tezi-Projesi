@@ -33,4 +33,22 @@ class InventoryServiceTest {
     assertEquals(0, inventoryService.getReservedStock("M1", "P1"));
     assertEquals(2, inventoryService.getAvailableStock("M1", "P1"));
   }
+
+  @Test
+  void consumeManually_protectsReservedStockAndThrowsWhenExceedingAvailable() {
+    InventoryService inventoryService = new InventoryService();
+    inventoryService.setStock("M1", "P1", 10);
+    inventoryService.reserveAvailable("M1", List.of(new OrderLine("P1", 6, 1.0)));
+
+    // Available is 4 (10 total - 6 reserved). Consuming 5 must fail to protect reserved stock!
+    org.junit.jupiter.api.Assertions.assertThrows(
+        IllegalStateException.class,
+        () -> inventoryService.consumeManually("M1", "P1", 5));
+
+    // Consuming 4 succeeds and keeps 6 reserved intact
+    inventoryService.consumeManually("M1", "P1", 4);
+    assertEquals(6, inventoryService.getTotalStock("M1", "P1"));
+    assertEquals(6, inventoryService.getReservedStock("M1", "P1"));
+    assertEquals(0, inventoryService.getAvailableStock("M1", "P1"));
+  }
 }

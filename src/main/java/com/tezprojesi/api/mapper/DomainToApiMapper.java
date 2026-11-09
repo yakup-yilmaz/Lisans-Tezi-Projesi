@@ -121,7 +121,9 @@ public final class DomainToApiMapper {
     dto.setPlanBenefit(request.getPlanBenefit());
     dto.setNetScore(request.getNetScore());
     dto.setTotalFinancialValue(request.getTotalFinancialValue());
-    dto.setAwaitingApproval(request.getStatus().name().equals("CREATED") && request.getAssignedVehicleId() != null);
+    dto.setAwaitingApproval(
+        (request.getStatus().name().equals("ASSIGNED") || request.getStatus().name().equals("CREATED"))
+            && request.getAssignedVehicleId() != null);
     dto.setItems(request.getItems().stream().map(DomainToApiMapper::toOrderItemDto).toList());
     return dto;
   }

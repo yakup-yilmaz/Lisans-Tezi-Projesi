@@ -28,46 +28,43 @@ function project(x, y) {
   }
 }
 
-function getEdgePath(from, to) {
-  const dx = to.x - from.x
-  const dy = to.y - from.y
+function getEdgeControlPoint(from, to) {
+  const isCanonical = from.x < to.x || (from.x === to.x && from.y <= to.y)
+  const pA = isCanonical ? from : to
+  const pB = isCanonical ? to : from
+  const dx = pB.x - pA.x
+  const dy = pB.y - pA.y
   const dist = Math.sqrt(dx * dx + dy * dy)
-  if (dist < 1) return `M ${from.x} ${from.y} L ${to.x} ${to.y}`
+  if (dist < 1) {
+    return { cx: (from.x + to.x) / 2, cy: (from.y + to.y) / 2, dist }
+  }
 
-  const seed = Math.abs(Math.sin(from.x * 12.9898 + from.y * 78.233 + to.x * 37.719 + to.y * 4.1414)) * 43758.5453
+  const seed = Math.abs(Math.sin(pA.x * 12.9898 + pA.y * 78.233 + pB.x * 37.719 + pB.y * 4.1414)) * 43758.5453
   const seedFrac = seed - Math.floor(seed)
   const direction = seedFrac > 0.5 ? 1 : -1
   const curvature = 0.08 + seedFrac * 0.14
 
-  const mx = (from.x + to.x) / 2
-  const my = (from.y + to.y) / 2
+  const mx = (pA.x + pB.x) / 2
+  const my = (pA.y + pB.y) / 2
   const px = -dy / dist
   const py = dx / dist
   const ofs = dist * curvature * direction
-  const cx = mx + px * ofs
-  const cy = my + py * ofs
+  return {
+    cx: mx + px * ofs,
+    cy: my + py * ofs,
+    dist,
+  }
+}
 
+function getEdgePath(from, to) {
+  const { cx, cy, dist } = getEdgeControlPoint(from, to)
+  if (dist < 1) return `M ${from.x} ${from.y} L ${to.x} ${to.y}`
   return `M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`
 }
 
 function getEdgeMidpoint(from, to) {
-  const dx = to.x - from.x
-  const dy = to.y - from.y
-  const dist = Math.sqrt(dx * dx + dy * dy)
+  const { cx, cy, dist } = getEdgeControlPoint(from, to)
   if (dist < 1) return { x: from.x, y: from.y }
-
-  const seed = Math.abs(Math.sin(from.x * 12.9898 + from.y * 78.233 + to.x * 37.719 + to.y * 4.1414)) * 43758.5453
-  const seedFrac = seed - Math.floor(seed)
-  const direction = seedFrac > 0.5 ? 1 : -1
-  const curvature = 0.08 + seedFrac * 0.14
-
-  const mx = (from.x + to.x) / 2
-  const my = (from.y + to.y) / 2
-  const px = -dy / dist
-  const py = dx / dist
-  const ofs = dist * curvature * direction
-  const cx = mx + px * ofs
-  const cy = my + py * ofs
   return { x: (from.x + 2 * cx + to.x) / 4, y: (from.y + 2 * cy + to.y) / 4 }
 }
 

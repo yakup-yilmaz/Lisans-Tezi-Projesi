@@ -54,7 +54,7 @@ public final class MetricsEventHandler {
       totalDeliveryTicks.addAndGet(duration);
 
       deliveriesPerVehicle.computeIfAbsent(completed.getVehicleId(), id -> new LongAdder()).increment();
-      utilizationPerVehicle.computeIfAbsent(completed.getVehicleId(), id -> new LongAdder()).add(duration);
+      // Note: Vehicle active ticks are tracked per-tick in SimulationEngine via recordVehicleUtilizationTick.
 
       if (duration > DELAY_THRESHOLD_TICKS) {
         delayedOrderCount.incrementAndGet();

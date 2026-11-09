@@ -213,6 +213,8 @@ public class DynamicBaselineInventoryTest {
     // After all threads: 1000 units consumed in 1 tick (from main thread perspective)
     // But due to thread scheduling, exact value depends on consumption distribution
     assertTrue(movingAverage > 0, "Moving average should record concurrent consumption");
+    assertEquals(99000, inventoryService.getTotalStock(DEPOT_ID, PRODUCT_ID),
+        "Atomic stock deduction must leave exactly 99000 units after 10 threads x 100 units");
   }
 
   @Test

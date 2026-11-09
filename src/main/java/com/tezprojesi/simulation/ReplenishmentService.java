@@ -8,7 +8,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 public final class ReplenishmentService {
-  private final List<ReplenishmentRequest> requests = new ArrayList<>();
+  private final List<ReplenishmentRequest> requests = new java.util.concurrent.CopyOnWriteArrayList<>();
 
   public ReplenishmentRequest create(String sourceDepotId, String targetDepotId, List<OrderLine> items) {
     return create(sourceDepotId, targetDepotId, items, 0L);

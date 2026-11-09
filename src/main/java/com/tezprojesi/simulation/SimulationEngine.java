@@ -72,7 +72,7 @@ public final class SimulationEngine {
   // RULE: Plans whose delivery route exceeds baseline distance by more than 50%
   // are escalated for human approval.
   private static final double CRITICAL_ROUTE_DEVIATION_RATIO = 0.50;
-  private static final double HEAVY_VEHICLE_CAPACITY_THRESHOLD = 46.0;
+  private static final double HEAVY_VEHICLE_CAPACITY_THRESHOLD = 60.0;
   private static final double HEAVY_VEHICLE_TOLL_MULTIPLIER = 1.35;
   // Best-Fit: idle-capacity penalty per unused m3 of vehicle volume.
   private static final double WASTE_PENALTY_PER_M3 = 0.25;
@@ -102,27 +102,27 @@ public final class SimulationEngine {
   private final VehicleRepository vehicleRepository;
   private final List<Depot> depots;
   private final List<Vehicle> vehicles;
-  private final Map<String, Order> activeOrders = new HashMap<>();
+  private final Map<String, Order> activeOrders = new java.util.concurrent.ConcurrentHashMap<>();
   private final List<Order> pendingOrders = new ArrayList<>();
   private final Map<String, Long> orderCreatedTick;
-  private final Map<String, ReplenishmentRequest> activeReplenishments = new HashMap<>();
-  private final Map<String, DeliveryPlan> stagedPlansByVehicle = new HashMap<>();
+  private final Map<String, ReplenishmentRequest> activeReplenishments = new java.util.concurrent.ConcurrentHashMap<>();
+  private final Map<String, DeliveryPlan> stagedPlansByVehicle = new java.util.concurrent.ConcurrentHashMap<>();
   /**
    * Guarded by approvalLock — accessed from both simulation-engine thread and
    * REST threads.
    */
-  private final Map<String, DeliveryPlan> approvalPendingPlansByVehicle = new HashMap<>();
+  private final Map<String, DeliveryPlan> approvalPendingPlansByVehicle = new java.util.concurrent.ConcurrentHashMap<>();
   /**
    * Tracks the tick at which each vehicle entered WAITING_FOR_APPROVAL, for
    * timeout enforcement.
    */
-  private final Map<String, Long> approvalWaitingSinceTick = new HashMap<>();
+  private final Map<String, Long> approvalWaitingSinceTick = new java.util.concurrent.ConcurrentHashMap<>();
   /**
    * Per-vehicle random approval window (45–60 ticks) once WAITING_FOR_APPROVAL
    * starts.
    */
-  private final Map<String, Long> approvalTimeoutLimitTicks = new HashMap<>();
-  private final Map<String, DispatchReadinessSnapshot> dispatchReadinessByVehicle = new HashMap<>();
+  private final Map<String, Long> approvalTimeoutLimitTicks = new java.util.concurrent.ConcurrentHashMap<>();
+  private final Map<String, DispatchReadinessSnapshot> dispatchReadinessByVehicle = new java.util.concurrent.ConcurrentHashMap<>();
   private final Set<String> vehiclesCompletedThisTick = new HashSet<>();
   private final Set<String> plannedRequestIds = new HashSet<>();
   private final Map<String, Long> lastDemandDrivenReplenishmentTickByProduct = new HashMap<>();
@@ -373,7 +373,7 @@ public final class SimulationEngine {
         long tickStartTime = System.currentTimeMillis();
 
         synchronized (lifecycleMonitor) {
-          stepTicks(5);
+          stepTicks(1);
         }
 
         // Adaptive timing: işlem süresi kadarını skip et
@@ -1361,7 +1361,18 @@ public final class SimulationEngine {
       totalTollCost *= HEAVY_VEHICLE_TOLL_MULTIPLIER;
     }
     
-    double totalOperationalCost = fuelCost + totalTollCost;
+    long loadingTicks = computeLoadTicks(vehicle, totalVolume);
+    long unloadingTicks = stopPlans.stream().mapToLong(VehicleMovementService.StopPlan::unloadTicks).sum();
+    long returnTicks = returnRoute.isEmpty() ? 0L : computeTravelTicks(returnRoute, vehicle);
+    long missionTicks = loadingTicks + unloadingTicks + computeTravelTicks(route, vehicle) + computeTravelTicks(repositionRoute, vehicle) + returnTicks;
+
+    double handlingCost = (loadingTicks + unloadingTicks) * LABOR_RATE_PER_TICK;
+    double timeCost = missionTicks * TIME_COST_WEIGHT;
+    double extraStopCost = Math.max(0, stopPlans.size() - 1) * EXTRA_STOP_PENALTY;
+    double delayPenalty = requests.stream().mapToDouble(this::requestDelayPenalty).sum() * DELAY_PENALTY_WEIGHT;
+    double stockoutPenalty = visitedDepots.stream().mapToDouble(this::stockoutPenaltyForDepot).sum() * STOCKOUT_PENALTY_WEIGHT;
+    double routeCost = fuelCost + totalTollCost;
+    double totalOperationalCost = routeCost + handlingCost + timeCost;
 
     // --- FAYDA VE SKOR HESABI ---
     double totalCargoValue = 0.0;
@@ -1388,11 +1399,6 @@ public final class SimulationEngine {
     double netScore = planBenefit - wastePenalty; 
     double score = -netScore;
 
-    double routeCost = ROUTE_COST_WEIGHT * (computeRouteCost(route, vehicle) + computeRouteCost(repositionRoute, vehicle));
-    long loadingTicks = computeLoadTicks(vehicle, totalVolume);
-    long unloadingTicks = stopPlans.stream().mapToLong(VehicleMovementService.StopPlan::unloadTicks).sum();
-    long missionTicks = loadingTicks + unloadingTicks + computeTravelTicks(route, vehicle) + computeTravelTicks(repositionRoute, vehicle);
-
     String routeStr = stopPlans.stream().map(VehicleMovementService.StopPlan::depotId).collect(Collectors.joining(" -> "));
     long departureTick = currentTick + loadingTicks;
     long idealTravelTicks = Math.round(totalRoundTripDistance / (vehicle.getAverageSpeedKmPerHour() / 60.0));
@@ -1415,13 +1421,8 @@ public final class SimulationEngine {
     String cargoSummary = String.format(java.util.Locale.US, "Yuk: %.1f m3 | Deger: [%s] Toplam: %.0f TL", totalVolume, cargoValueDetail.toString(), totalCargoValue);
 
     String comparisonSummary = String.format(java.util.Locale.US,
-        "Tam Misyon Maliyeti (Gidis-Donus): %.1f TL | Verimlilik (ROI): %.1fx | LES: %.0f Puan",
-        totalOperationalCost, bcrRatio, planBenefit);
-
-    // Veri Tutarliligi: Donus yolunda da ayni ROI'yi gosterebilmek icin araca kaydet
-    vehicle.setCurrentMissionTotalCost(totalOperationalCost);
-    vehicle.setCurrentMissionCargoValue(totalCargoValue);
-    vehicle.setCurrentMissionBcrRatio(bcrRatio);
+        "Tam Misyon Maliyeti (Gidis-Donus): %.1f TL (Yakit: %.0f TL | Gise: %.0f TL | Iscilik: %.0f TL) | Verimlilik (ROI): %.1fx | LES: %.0f Puan",
+        totalOperationalCost, fuelCost, totalTollCost, handlingCost + timeCost, bcrRatio, planBenefit);
 
     if (!inventoryService.hasEnoughAvailable(mainDepot.getId(), mergedItems)) {
       return null;
@@ -1433,7 +1434,7 @@ public final class SimulationEngine {
         totalRoundTripDistance, totalOperationalCost, totalVolume, score,
         loadingTicks, missionTicks, requests.stream().anyMatch(this::isUrgentRequest),
         deliveryDistance, repositionDistance, planBenefit, netScore, routeCost,
-        0.0, 0.0, 0.0, 0.0, 0.0, wastePenalty, null, null, routeSummary, cargoSummary);
+        handlingCost, timeCost, extraStopCost, delayPenalty, stockoutPenalty, wastePenalty, null, comparisonSummary, routeSummary, cargoSummary);
   }
 
   private long requiredMaskForReplenishment(ReplenishmentRequest request) {
@@ -1959,6 +1960,12 @@ public final class SimulationEngine {
               formatTickToTime(estimatedArrivalTick));
     }
 
+    double missionCargoValue = computeTotalCargoFinancialValue(plan.items());
+    double missionBcr = missionCargoValue / Math.max(1.0, plan.operationalCost());
+    vehicle.setCurrentMissionTotalCost(plan.operationalCost());
+    vehicle.setCurrentMissionCargoValue(missionCargoValue);
+    vehicle.setCurrentMissionBcrRatio(missionBcr);
+
     vehicleMovementService.assignRoute(
         vehicle.getId(),
         plan.referenceId(),
@@ -1968,7 +1975,7 @@ public final class SimulationEngine {
         currentTick,
         plan.totalVolume(),
         "REPLENISHMENT",
-        plan.deliveryDistanceKm(),
+        plan.distanceKm(),
         plan.operationalCost(),
         vehicle.getCapacityVolume(),
         loadFraction,
@@ -2134,33 +2141,36 @@ public final class SimulationEngine {
       if (completion == null || vehicle == null) {
         continue;
       }
-      // Thesis Analytics: Split routeCost into Fuel and Tolls
-      double fuelCost = completion.distanceKm() * vehicle.getCostPerKm();
-      double tollCost = Math.max(0, completion.routeCost() - fuelCost);
 
-      vehicleReportService.recordTrip(
-          vehicle.getId(),
-          vehicle.getFuelType(),
-          completion.startedAtTick(),
-          completion.completedAtTick(),
-          completion.distanceKm(),
-          completion.cost(),
-          completion.volume(),
-          completion.routeType(),
-          completion.loadFraction(),
-          completion.waitTicks(),
-          completion.loadingTicks(),
-          completion.unloadingTicks(),
-          completion.stopCount(),
-          completion.planBenefit(),
-          completion.netScore(),
-          fuelCost,
-          tollCost,
-          completion.handlingCost(),
-          completion.timeCost(),
-          completion.delayPenalty(),
-          completion.stockoutPenalty(),
-          vehicle.getCurrentMissionCargoValue());
+      if ("REPLENISHMENT".equals(completion.routeType())) {
+        // Thesis Analytics: Split routeCost into Fuel and Tolls without RETURN double-counting
+        double fuelCost = completion.distanceKm() * vehicle.getCostPerKm();
+        double tollCost = Math.max(0.0, completion.routeCost() - fuelCost);
+
+        vehicleReportService.recordTrip(
+            vehicle.getId(),
+            vehicle.getFuelType(),
+            completion.startedAtTick(),
+            completion.completedAtTick(),
+            completion.distanceKm(),
+            completion.cost(),
+            completion.volume(),
+            completion.routeType(),
+            completion.loadFraction(),
+            completion.waitTicks(),
+            completion.loadingTicks(),
+            completion.unloadingTicks(),
+            completion.stopCount(),
+            completion.planBenefit(),
+            completion.netScore(),
+            fuelCost,
+            tollCost,
+            completion.handlingCost(),
+            completion.timeCost(),
+            completion.delayPenalty(),
+            completion.stockoutPenalty(),
+            vehicle.getCurrentMissionCargoValue());
+      }
 
       if ("POSITIONING".equals(completion.routeType())) {
         DeliveryPlan stagedPlan = stagedPlansByVehicle.get(vehicle.getId());
@@ -2190,6 +2200,9 @@ public final class SimulationEngine {
       if ("REPLENISHMENT".equals(completion.routeType())) {
         assignReturnToMain(vehicle);
       } else {
+        vehicle.setCurrentMissionTotalCost(0.0);
+        vehicle.setCurrentMissionCargoValue(0.0);
+        vehicle.setCurrentMissionBcrRatio(0.0);
         vehicle.setStatus(VehicleStatus.IDLE);
         vehicle.setWaitingSinceTick(currentTick);
         replenishmentPlanDirty = true;
@@ -2550,11 +2563,23 @@ public final class SimulationEngine {
   }
 
   public void submitManualReplenishmentRequest(String targetDepotId, String productId, int quantity) {
-    if (quantity <= 0)
-      return;
+    if (quantity <= 0) {
+      throw new BadRequestException("quantity must be positive");
+    }
+    if (targetDepotId == null || targetDepotId.isBlank()) {
+      throw new BadRequestException("targetDepotId is required");
+    }
+    if (!depots.isEmpty()) {
+      boolean validTarget = depots.stream()
+          .anyMatch(d -> d.getId().equals(targetDepotId) && d.isMicro());
+      if (!validTarget) {
+        throw new BadRequestException("Unknown or invalid micro depot: " + targetDepotId);
+      }
+    }
     Product product = productCatalogService.findById(productId).orElse(null);
-    if (product == null)
-      return;
+    if (product == null) {
+      throw new BadRequestException("Unknown product: " + productId);
+    }
 
     // KONTROL: Depo kapasitesi (100) aşılıyor mu?
     int currentStock = inventoryService.getTotalStock(targetDepotId, productId);
@@ -2702,6 +2727,10 @@ public final class SimulationEngine {
       initialVehicles = new java.util.ArrayList<>(initialVehicles);
       initialVehicles.add(copyVehicle(vehicle));
     }
+  }
+
+  public CityGraph getGraph() {
+    return graph;
   }
 
   public List<Depot> getDepots() {

@@ -233,14 +233,14 @@ public final class InventoryService {
     }
   }
 
-  public void consume(String depotId, List<OrderLine> items) {
+  public synchronized void consume(String depotId, List<OrderLine> items) {
     if (!hasEnough(depotId, items)) {
       throw new IllegalStateException("insufficient stock for depot " + depotId);
     }
     Map<String, Integer> stock = stockByDepot.computeIfAbsent(depotId, key -> new ConcurrentHashMap<>());
     Map<String, Integer> reserved = reservedStockByDepot.computeIfAbsent(depotId, key -> new ConcurrentHashMap<>());
     for (OrderLine item : items) {
-      stock.put(item.getProductId(), stock.getOrDefault(item.getProductId(), 0) - item.getQuantity());
+      stock.compute(item.getProductId(), (k, v) -> (v == null ? 0 : v) - item.getQuantity());
       int currentReserved = reserved.getOrDefault(item.getProductId(), 0);
       int toRelease = Math.min(currentReserved, item.getQuantity());
       if (toRelease > 0) {
@@ -257,16 +257,16 @@ public final class InventoryService {
     }
   }
 
-  public void consumeManually(String depotId, String productId, int quantity) {
+  public synchronized void consumeManually(String depotId, String productId, int quantity) {
     if (quantity <= 0) {
       throw new IllegalArgumentException("quantity must be positive");
     }
-    int current = getTotalStock(depotId, productId);
-    if (current < quantity) {
-      throw new IllegalStateException("Yetersiz stok. Mevcut: " + current);
+    int available = getAvailableStock(depotId, productId);
+    if (available < quantity) {
+      throw new IllegalStateException("Yetersiz kullanilabilir stok. Mevcut: " + available);
     }
     Map<String, Integer> stock = stockByDepot.computeIfAbsent(depotId, key -> new ConcurrentHashMap<>());
-    stock.put(productId, current - quantity);
+    stock.compute(productId, (k, v) -> (v == null ? 0 : v) - quantity);
     recordConsumption(depotId, productId, quantity);
     updateBaselineFromMovingAverage(depotId, productId);
   }

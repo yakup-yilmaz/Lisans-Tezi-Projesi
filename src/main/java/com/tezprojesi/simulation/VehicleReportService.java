@@ -74,6 +74,7 @@ public final class VehicleReportService {
     List<TripRecord> relevant = tripRecords.stream()
         .filter(record -> record.vehicleId().equals(vehicle.getId()))
         .filter(record -> record.endTick() >= fromTick && record.endTick() <= currentTick)
+        .filter(record -> !"RETURN".equals(record.routeType()) && !"POSITIONING".equals(record.routeType()))
         .toList();
     double distance = relevant.stream().mapToDouble(TripRecord::distanceKm).sum();
     double cost = relevant.stream().mapToDouble(TripRecord::cost).sum();
@@ -84,12 +85,9 @@ public final class VehicleReportService {
     long totalLoadingTicks = relevant.stream().mapToLong(TripRecord::loadingTicks).sum();
     long totalUnloadingTicks = relevant.stream().mapToLong(TripRecord::unloadingTicks).sum();
     long multiStopTrips = relevant.stream().filter(record -> record.stopCount() > 1).count();
-    long singleStopTrips = relevant.stream().filter(record -> record.stopCount() <= 1).count();
-    // RETURN seferleri LES hesabina dahil edilmez (bos donus, karar kalitesi olcumu degil)
-    List<TripRecord> scorableTrips = relevant.stream()
-        .filter(r -> !"RETURN".equals(r.routeType())).toList();
-    double averageNetScore = scorableTrips.isEmpty() ? 0.0 : scorableTrips.stream().mapToDouble(TripRecord::netScore).average().orElse(0.0);
-    double averagePlanBenefit = scorableTrips.isEmpty() ? 0.0 : scorableTrips.stream().mapToDouble(TripRecord::planBenefit).average().orElse(0.0);
+    long singleStopTrips = relevant.stream().filter(record -> record.stopCount() == 1).count();
+    double averageNetScore = relevant.isEmpty() ? 0.0 : relevant.stream().mapToDouble(TripRecord::netScore).average().orElse(0.0);
+    double averagePlanBenefit = relevant.isEmpty() ? 0.0 : relevant.stream().mapToDouble(TripRecord::planBenefit).average().orElse(0.0);
     long trips = relevant.size();
     return new VehiclePeriodReport(
         vehicle.getId(),
